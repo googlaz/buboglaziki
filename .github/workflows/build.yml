@@ -31,9 +31,11 @@ jobs:
         run: |
           flutter create --project-name buboglaziki --org com.family.buboglaziki .
           
-      - name: Configure minSdkVersion for Jitsi Meet
+      - name: Configure required Android versions
         run: |
           sed -i 's/flutter.minSdkVersion/24/g' android/app/build.gradle
+          sed -i -E 's/id "org.jetbrains.kotlin.android" version "[^"]+"/id "org.jetbrains.kotlin.android" version "1.9.24"/g' android/settings.gradle
+          sed -i "s/ext.kotlin_version = '<latest-version>'/ext.kotlin_version = '1.9.24'/g" android/build.gradle || true
           
       - name: Get dependencies
         run: flutter pub get

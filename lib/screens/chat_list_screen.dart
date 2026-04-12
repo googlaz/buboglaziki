@@ -44,7 +44,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   void _openChat(String title, String? targetUserId, bool isGroup) {
-    String chatId = isGroup ? 'family_group' : [widget.currentUserId, targetUserId].toList()..sort().join('_');
+    String chatId;
+    if (isGroup) {
+      chatId = 'family_group';
+    } else {
+      final ids = [widget.currentUserId, targetUserId!];
+      ids.sort();
+      chatId = ids.join('_');
+    }
     
     Navigator.push(
       context,
