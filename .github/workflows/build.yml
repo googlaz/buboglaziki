@@ -34,16 +34,16 @@ jobs:
       - name: Configure required Android versions
         run: |
           sed -i 's/flutter.minSdkVersion/26/g' android/app/build.gradle
-          sed -i -E 's/id "org.jetbrains.kotlin.android" version "[^"]+"/id "org.jetbrains.kotlin.android" version "1.9.24"/g' android/settings.gradle
-          sed -i "s/ext.kotlin_version = '<latest-version>'/ext.kotlin_version = '1.9.24'/g" android/build.gradle || true
+          sed -i -E 's/id "org.jetbrains.kotlin.android" version "[^"]+"/id "org.jetbrains.kotlin.android" version "1.9.24"/g' android/settings.gradle || true
+          sed -i -E "s/ext.kotlin_version = '[^']+'/ext.kotlin_version = '1.9.24'/g" android/build.gradle || true
           sed -i 's/<manifest xmlns:android="http:\/\/schemas.android.com\/apk\/res\/android">/<manifest xmlns:android="http:\/\/schemas.android.com\/apk\/res\/android" xmlns:tools="http:\/\/schemas.android.com\/tools">/g' android/app/src/main/AndroidManifest.xml
           sed -i 's/<application/<application tools:replace="android:label"/g' android/app/src/main/AndroidManifest.xml
           
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Build APK
-        run: flutter build apk --release
+      - name: Build APK without R8 Minifier
+        run: flutter build apk --release --no-shrink
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
