@@ -30,8 +30,15 @@ jobs:
       - name: Create Flutter platform folders
         run: flutter create --project-name buboglaziki --org com.family.buboglaziki .
 
+      - name: Set Russian app name
+        run: |
+          sed -i 's/android:label="buboglaziki"/android:label="Бубоглазики"/g' android/app/src/main/AndroidManifest.xml
+
       - name: Get dependencies
         run: flutter pub get
+
+      - name: Generate launcher icons
+        run: dart run flutter_launcher_icons
 
       - name: Build APK
         run: flutter build apk --release

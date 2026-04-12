@@ -58,11 +58,13 @@ class _LoginCodeScreenState extends State<LoginCodeScreen> {
               TextField(
                 controller: _codeController,
                 style: const TextStyle(fontSize: 22),
+                keyboardType: TextInputType.text,
+                enableSuggestions: false,
+                autocorrect: false,
                 decoration: const InputDecoration(
                   hintText: 'Семейный код',
                   prefixIcon: Icon(Icons.lock, size: 30),
                 ),
-                obscureText: true,
               ),
               const SizedBox(height: 48),
               ElevatedButton(
