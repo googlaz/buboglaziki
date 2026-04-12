@@ -13,9 +13,6 @@ dependencies:
   supabase_flutter: ^2.6.0
   jitsi_meet_flutter_sdk: ^11.6.0
   shared_preferences: ^2.2.2
-
-dependency_overrides:
-  app_links: ^6.5.0
   image_picker: ^1.0.7
   uuid: ^4.3.3
   google_fonts: ^6.2.1
