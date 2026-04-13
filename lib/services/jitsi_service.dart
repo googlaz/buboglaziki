@@ -16,6 +16,6 @@ class JitsiService {
       'userInfo.displayName=$userName',
     ].join('&');
 
-    return 'https://meet.jit.si/$safeRoomName#$config';
+    return 'https://meet.ffmuc.net/$safeRoomName#$config';
   }
 }
