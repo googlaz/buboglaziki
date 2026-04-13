@@ -1,29 +1,17 @@
-import 'package:jitsi_meet_flutter_sdk/jitsi_meet_flutter_sdk.dart';
-
 class JitsiService {
-  static final _jitsiMeetPlugin = JitsiMeet();
-
-  static Future<void> joinMeeting({
+  static String getMeetingUrl({
     required String roomName,
     required String userName,
     required bool isVideoCall,
-  }) async {
-    var options = JitsiMeetConferenceOptions(
-      room: roomName,
-      serverURL: 'https://meet.jit.si',
-      configOverrides: {
-        "startWithAudioMuted": false,
-        "startWithVideoMuted": !isVideoCall,
-        "startAudioOnly": !isVideoCall,
-      },
-      featureFlags: {
-        "unsaferoomwarning.enabled": false,
-      },
-      userInfo: JitsiMeetUserInfo(
-        displayName: userName,
-      ),
-    );
+  }) {
+    final config = [
+      'config.startWithAudioMuted=false',
+      'config.startWithVideoMuted=${!isVideoCall}',
+      'config.startAudioOnly=${!isVideoCall}',
+      'config.disableDeepLinking=true',
+      'userInfo.displayName=$userName',
+    ].join('&');
 
-    await _jitsiMeetPlugin.join(options);
+    return 'https://meet.jit.si/$roomName#$config';
   }
 }

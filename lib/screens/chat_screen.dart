@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'call_screen.dart';
 import '../services/jitsi_service.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -90,11 +92,23 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _startCall(bool isVideo) async {
     try {
-      await JitsiService.joinMeeting(
+      // Запрашиваем права перед открытием WebView, иначе он может зависнуть
+      await [Permission.microphone, Permission.camera].request();
+
+      final url = JitsiService.getMeetingUrl(
         roomName: widget.chatId.replaceAll('_', '').replaceAll('-', ''),
         userName: _currentUserName,
         isVideoCall: isVideo,
       );
+
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => CallScreen(meetingUrl: url, isVideoCall: isVideo),
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

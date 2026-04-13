@@ -49,12 +49,8 @@ jobs:
           # minSdkVersion 26 (требование Jitsi SDK)
           sed -i 's/flutter.minSdkVersion/26/g' android/app/build.gradle
           
-          # Добавляем xmlns:tools для устранения конфликта manifest merge
+          # Добавляем xmlns:tools для устранения конфликта свойств
           sed -i 's|<manifest xmlns:android="http://schemas.android.com/apk/res/android">|<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">|g' android/app/src/main/AndroidManifest.xml
-          sed -i 's|<application|<application tools:replace="android:label"|g' android/app/src/main/AndroidManifest.xml
-          
-          # Jitsi SDK требует FlutterFragmentActivity вместо FlutterActivity
-          sed -i 's/FlutterActivity/FlutterFragmentActivity/g' android/app/src/main/kotlin/com/family/buboglaziki/buboglaziki/MainActivity.kt
 
       - name: Get dependencies
         run: flutter pub get
