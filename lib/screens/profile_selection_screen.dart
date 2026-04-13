@@ -23,7 +23,7 @@ class _ProfileSelectionScreenState extends State<ProfileSelectionScreen> {
 
   Future<void> _fetchProfiles() async {
     try {
-      final response = await _supabase.from('profiles').select();
+      final response = await _supabase.from('profiles').select().timeout(const Duration(seconds: 15));
       setState(() {
         _profiles = response;
         _isLoading = false;

@@ -28,7 +28,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
       final response = await _supabase
           .from('profiles')
           .select()
-          .neq('id', widget.currentUserId);
+          .neq('id', widget.currentUserId)
+          .timeout(const Duration(seconds: 15));
       setState(() {
         _profiles = response;
         _isLoading = false;
