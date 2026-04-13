@@ -35,8 +35,12 @@ jobs:
           # Русское название приложения
           sed -i 's/android:label="buboglaziki"/android:label="Бубоглазики"/g' android/app/src/main/AndroidManifest.xml
           
-          # Разрешение на интернет
+          # Разрешения для интернета и звонков (Jitsi SDK)
           sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.CAMERA" />' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.RECORD_AUDIO" />' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />' android/app/src/main/AndroidManifest.xml
           
           # minSdkVersion 26 (требование Jitsi SDK)
           sed -i 's/flutter.minSdkVersion/26/g' android/app/build.gradle
