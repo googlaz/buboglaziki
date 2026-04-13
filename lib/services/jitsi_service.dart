@@ -10,6 +10,8 @@ class JitsiService {
     final config = [
       'config.startWithAudioMuted=false',
       'config.startWithVideoMuted=${!isVideoCall}',
+      'config.startAudioOnly=${!isVideoCall}',
+      'config.disableDeepLinking=true',
       'userInfo.displayName=$userName',
     ].join('&');
 
