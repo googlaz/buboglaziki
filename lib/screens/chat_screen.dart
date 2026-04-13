@@ -88,12 +88,20 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _startCall(bool isVideo) {
-    JitsiService.joinMeeting(
-      roomName: widget.chatId.replaceAll('_', '').replaceAll('-', ''),
-      userName: _currentUserName,
-      isVideoCall: isVideo,
-    );
+  void _startCall(bool isVideo) async {
+    try {
+      await JitsiService.joinMeeting(
+        roomName: widget.chatId.replaceAll('_', '').replaceAll('-', ''),
+        userName: _currentUserName,
+        isVideoCall: isVideo,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка звонка: $e')),
+        );
+      }
+    }
   }
 
   @override
