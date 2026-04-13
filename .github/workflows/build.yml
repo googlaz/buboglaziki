@@ -41,6 +41,10 @@ jobs:
           sed -i '/<application/i \    <uses-permission android:name="android.permission.RECORD_AUDIO" />' android/app/src/main/AndroidManifest.xml
           sed -i '/<application/i \    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />' android/app/src/main/AndroidManifest.xml
           sed -i '/<application/i \    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />' android/app/src/main/AndroidManifest.xml
           
           # minSdkVersion 26 (требование Jitsi SDK)
           sed -i 's/flutter.minSdkVersion/26/g' android/app/build.gradle
