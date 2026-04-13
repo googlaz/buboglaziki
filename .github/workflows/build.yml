@@ -48,6 +48,16 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Patch app_links for Flutter 3.24 compatibility
+        run: |
+          APP_LINKS_GRADLE=$(find /home/runner/.pub-cache -path "*/app_links-*/android/build.gradle" | head -1)
+          if [ -n "$APP_LINKS_GRADLE" ]; then
+            echo "Patching $APP_LINKS_GRADLE"
+            sed -i 's/flutter.compileSdkVersion/34/g' "$APP_LINKS_GRADLE"
+            sed -i 's/flutter.minSdkVersion/21/g' "$APP_LINKS_GRADLE"
+            sed -i 's/flutter.targetSdkVersion/34/g' "$APP_LINKS_GRADLE"
+          fi
+
       - name: Generate launcher icons
         run: dart run flutter_launcher_icons
 
