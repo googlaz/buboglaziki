@@ -18,23 +18,25 @@ Future<void> main() async {
   await Firebase.initializeApp();
   await FcmService.initialize();
 
-  // Ловим уведомления, когда мы внутри приложения
-  FcmService.setupInteractions((RemoteMessage message) {
+  // Ловим уведомления: когда мы внутри приложения, в фоне или когда закрыто
+  await FcmService.setupInteractions((RemoteMessage message) {
     if (message.data['type'] == 'call') {
-      final String callId = message.data['call_id'];
-      final String callerName = message.data['caller_name'];
+      final String? callId = message.data['call_id'];
+      final String? callerName = message.data['caller_name'];
       final bool isVideo = message.data['is_video'] == 'true';
 
-      navigatorKey.currentState?.push(
-        MaterialPageRoute(
-          builder: (_) => IncomingCallScreen(
-            callId: callId,
-            callerName: callerName,
-            isVideoCall: isVideo,
-            currentUserName: 'Вы', // Заменим на реальное из базы, если надо
+      if (callId != null && callerName != null) {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => IncomingCallScreen(
+              callId: callId,
+              callerName: callerName,
+              isVideoCall: isVideo,
+              currentUserName: 'Семьянин', // Можно заменить на реальное из базы, если надо
+            ),
           ),
-        ),
-      );
+        );
+      }
     }
   });
 

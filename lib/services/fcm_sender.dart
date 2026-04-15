@@ -48,7 +48,7 @@ class FcmSender {
         }
       };
 
-      await http.post(
+      final res = await http.post(
         url,
         headers: {
           'Content-Type': 'application/json',
@@ -56,6 +56,7 @@ class FcmSender {
         },
         body: jsonEncode(payload),
       );
+      print('FCM Send Response: ${res.statusCode} ${res.body}');
     } catch (e) {
       print('Ошибка при отправке FCM пуша: \$e');
     }

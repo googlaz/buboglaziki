@@ -81,13 +81,24 @@ class FcmService {
     });
   }
 
-  static void setupInteractions(Function(RemoteMessage) onMessageReceived) {
-    // Слушаем сообщения, когда приложение открыто
+  static Future<void> setupInteractions(Function(RemoteMessage) onMessageReceived) async {
+    // 1. Слушаем сообщения, когда приложение открыто (foreground)
     FirebaseMessaging.onMessage.listen(onMessageReceived);
 
-    // Слушаем клик по уведомлению
+    // 2. Слушаем клик по уведомлению, когда приложение было в фоне (background)
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       print('FCM: onMessageOpenedApp: ${message.data}');
+      onMessageReceived(message);
     });
+
+    // 3. Отлавливаем уведомление, которое запустило полностью закрытое приложение (terminated)
+    final initialMessage = await _messaging.getInitialMessage();
+    if (initialMessage != null) {
+      print('FCM: getInitialMessage: ${initialMessage.data}');
+      // Даем небольшую задержку, чтобы Flutter и NavigatorKey успели инициализироваться
+      Future.delayed(const Duration(milliseconds: 800), () {
+        onMessageReceived(initialMessage);
+      });
+    }
   }
 }
