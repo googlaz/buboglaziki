@@ -44,17 +44,12 @@ class _ProfileSelectionScreenState extends State<ProfileSelectionScreen> {
   Future<void> _loginAs(String profileId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('saved_profile_id', profileId);
-    
-    // Получаем и сохраняем FCM токен для уведомлений
-    try {
-      final token = await FcmService.getToken();
-      if (token != null) {
-        await _supabase.from('profiles').update({'fcm_token': token}).eq('id', profileId);
-      }
-    } catch (e) {
-      print('Ошибка сохранения FCM токена: $e');
-    }
-    
+
+    // Сохраняем FCM-токен с правильным числовым ID
+    await FcmService.saveTokenToDb(profileId);
+    // Слушаем обновление токена при его ротации
+    FcmService.listenTokenRefresh(profileId);
+
     if (mounted) {
       Navigator.pushReplacement(
         context,

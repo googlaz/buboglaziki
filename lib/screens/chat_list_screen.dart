@@ -26,14 +26,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   Future<void> _saveFcmToken() async {
-    try {
-      final token = await FcmService.getToken();
-      if (token != null) {
-        await _supabase.from('profiles').update({'fcm_token': token}).eq('id', widget.currentUserId);
-      }
-    } catch (e) {
-      print('Ошибка сохранения FCM токена: $e');
-    }
+    // Сохраняем токен с правильным числовым ID и подписываемся на его обновления
+    await FcmService.saveTokenToDb(widget.currentUserId);
+    FcmService.listenTokenRefresh(widget.currentUserId);
   }
 
   Future<void> _fetchProfiles() async {
