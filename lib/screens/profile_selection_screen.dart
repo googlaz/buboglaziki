@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'chat_list_screen.dart';
+import '../services/fcm_service.dart';
 
 class ProfileSelectionScreen extends StatefulWidget {
   const ProfileSelectionScreen({super.key});
@@ -43,6 +44,16 @@ class _ProfileSelectionScreenState extends State<ProfileSelectionScreen> {
   Future<void> _loginAs(String profileId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('saved_profile_id', profileId);
+    
+    // Получаем и сохраняем FCM токен для уведомлений
+    try {
+      final token = await FcmService.getToken();
+      if (token != null) {
+        await _supabase.from('profiles').update({'fcm_token': token}).eq('id', profileId);
+      }
+    } catch (e) {
+      print('Ошибка сохранения FCM токена: $e');
+    }
     
     if (mounted) {
       Navigator.pushReplacement(

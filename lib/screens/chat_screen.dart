@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'call_screen.dart';
+import 'outgoing_call_screen.dart';
 import '../services/jitsi_service.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -92,20 +93,27 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _startCall(bool isVideo) async {
     try {
-      // Запрашиваем права перед открытием WebView, иначе он может зависнуть
-      await [Permission.microphone, Permission.camera].request();
-
-      final url = JitsiService.getMeetingUrl(
-        roomName: widget.chatId.replaceAll('_', '').replaceAll('-', ''),
-        userName: _currentUserName,
-        isVideoCall: isVideo,
-      );
+      // Ищем токен и данные собеседника в таблице профилей
+      final otherProfile = await _supabase.from('profiles').select().eq('id', widget.chatId.split('_').firstWhere((id) => id != _currentUserId, orElse: () => '')).maybeSingle();
+      
+      final receiverId = otherProfile?['id']?.toString() ?? '';
+      final receiverName = otherProfile?['display_name'] ?? 'Семья';
+      final receiverUrl = otherProfile?['avatar_url'] ?? '';
+      final receiverToken = otherProfile?['fcm_token'] ?? '';
 
       if (mounted) {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => CallScreen(meetingUrl: url, isVideoCall: isVideo),
+            builder: (context) => OutgoingCallScreen(
+              receiverId: receiverId,
+              receiverName: receiverName,
+              receiverAvatarUrl: receiverUrl,
+              receiverFcmToken: receiverToken,
+              callerId: _currentUserId,
+              callerName: _currentUserName,
+              isVideoCall: isVideo,
+            ),
           ),
         );
       }
