@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 class CallScreen extends StatefulWidget {
   final String meetingUrl;
   final bool isVideoCall;
+  final String? callId;
 
   const CallScreen({
     super.key,
     required this.meetingUrl,
     required this.isVideoCall,
+    this.callId,
   });
 
   @override
@@ -17,6 +21,23 @@ class CallScreen extends StatefulWidget {
 
 class _CallScreenState extends State<CallScreen> {
   final GlobalKey webViewKey = GlobalKey();
+  final _supabase = Supabase.instance.client;
+
+  @override
+  void dispose() {
+    _endCallInDatabase();
+    super.dispose();
+  }
+
+  Future<void> _endCallInDatabase() async {
+    if (widget.callId != null) {
+      try {
+        await _supabase.from('calls').update({'status': 'ended'}).eq('id', widget.callId!);
+      } catch (e) {
+        print('Ошибка при завершении звонка: $e');
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,6 +46,10 @@ class _CallScreenState extends State<CallScreen> {
         title: Text(widget.isVideoCall ? 'Видеозвонок' : 'Звонок'),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -36,6 +61,8 @@ class _CallScreenState extends State<CallScreen> {
             allowsInlineMediaPlayback: true,
             iframeAllow: "camera; microphone",
             iframeAllowFullscreen: true,
+            javaScriptEnabled: true,
+            userAgent: "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36",
           ),
           androidOnPermissionRequest: (controller, origin, resources) async {
             return PermissionRequestResponse(

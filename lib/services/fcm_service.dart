@@ -44,7 +44,7 @@ class FcmService {
     );
 
     await _localNotifications
-        .resolvePlatformSpecificAction<AndroidFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
   }
 

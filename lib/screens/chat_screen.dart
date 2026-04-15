@@ -94,7 +94,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _startCall(bool isVideo) async {
     try {
       // Ищем токен и данные собеседника в таблице профилей
-      final otherProfile = await _supabase.from('profiles').select().eq('id', widget.chatId.split('_').firstWhere((id) => id != _currentUserId, orElse: () => '')).maybeSingle();
+      final otherProfile = await _supabase.from('profiles').select().eq('id', widget.chatId.split('_').firstWhere((id) => id != widget.currentUserId, orElse: () => '')).maybeSingle();
       
       final receiverId = otherProfile?['id']?.toString() ?? '';
       final receiverName = otherProfile?['display_name'] ?? 'Семья';
@@ -110,7 +110,7 @@ class _ChatScreenState extends State<ChatScreen> {
               receiverName: receiverName,
               receiverAvatarUrl: receiverUrl,
               receiverFcmToken: receiverToken,
-              callerId: _currentUserId,
+              callerId: widget.currentUserId,
               callerName: _currentUserName,
               isVideoCall: isVideo,
             ),
