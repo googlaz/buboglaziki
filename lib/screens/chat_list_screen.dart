@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'chat_screen.dart';
 import 'login_code_screen.dart';
+import '../services/fcm_service.dart';
 
 class ChatListScreen extends StatefulWidget {
   final String currentUserId;
@@ -21,6 +22,18 @@ class _ChatListScreenState extends State<ChatListScreen> {
   void initState() {
     super.initState();
     _fetchProfiles();
+    _saveFcmToken();
+  }
+
+  Future<void> _saveFcmToken() async {
+    try {
+      final token = await FcmService.getToken();
+      if (token != null) {
+        await _supabase.from('profiles').update({'fcm_token': token}).eq('id', widget.currentUserId);
+      }
+    } catch (e) {
+      print('Ошибка сохранения FCM токена: $e');
+    }
   }
 
   Future<void> _fetchProfiles() async {
@@ -61,6 +74,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
           chatId: chatId,
           title: title,
           currentUserId: widget.currentUserId,
+          otherUserId: isGroup ? null : targetUserId,
         ),
       ),
     );

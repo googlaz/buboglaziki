@@ -12,12 +12,14 @@ class ChatScreen extends StatefulWidget {
   final String chatId;
   final String title;
   final String currentUserId;
+  final String? otherUserId; // ID собеседника (null для группового чата)
 
   const ChatScreen({
     super.key,
     required this.chatId,
     required this.title,
     required this.currentUserId,
+    this.otherUserId,
   });
 
   @override
@@ -92,14 +94,30 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _startCall(bool isVideo) async {
+    if (widget.otherUserId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Звонки доступны только в личном чате')),
+      );
+      return;
+    }
     try {
-      // Ищем токен и данные собеседника в таблице профилей
-      final otherProfile = await _supabase.from('profiles').select().eq('id', widget.chatId.split('_').firstWhere((id) => id != widget.currentUserId, orElse: () => '')).maybeSingle();
-      
-      final receiverId = otherProfile?['id']?.toString() ?? '';
-      final receiverName = otherProfile?['display_name'] ?? 'Семья';
-      final receiverUrl = otherProfile?['avatar_url'] ?? '';
-      final receiverToken = otherProfile?['fcm_token'] ?? '';
+      final otherProfile = await _supabase
+          .from('profiles')
+          .select()
+          .eq('id', widget.otherUserId!)
+          .single();
+
+      final receiverId = otherProfile['id']?.toString() ?? '';
+      final receiverName = otherProfile['display_name'] ?? 'Семья';
+      final receiverUrl = otherProfile['avatar_url'] ?? '';
+      final receiverToken = otherProfile['fcm_token'] ?? '';
+
+      if (receiverToken.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Собеседник ещё не открывал приложение. Попросите его открыть Бубоглазики!')),
+        );
+        return;
+      }
 
       if (mounted) {
         Navigator.push(
