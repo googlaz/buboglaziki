@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "56186041993",
+    "project_id": "bubumes",
+    "storage_bucket": "bubumes.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:56186041993:android:5d5d14469f354c1cd2b858",
+        "android_client_info": {
+          "package_name": "com.family.buboglaziki.buboglaziki"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCudPebEjwpNXTNRG2TVgcpK5NTjqrYyI0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

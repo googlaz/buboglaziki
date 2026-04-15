@@ -51,6 +51,18 @@ jobs:
           
           # Добавляем xmlns:tools для устранения конфликта свойств
           sed -i 's|<manifest xmlns:android="http://schemas.android.com/apk/res/android">|<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">|g' android/app/src/main/AndroidManifest.xml
+          
+          # Настройка Google Services на уровне проекта
+          sed -i '/dependencies {/a \        classpath "com.google.gms:google-services:4.4.2"' android/build.gradle
+          
+          # Настройка Google Services на уровне приложения
+          echo 'apply plugin: "com.google.gms.google-services"' >> android/app/build.gradle
+          
+          # Копируем конфиг Firebase (он лежит в корне нашего проекта)
+          cp google-services.json android/app/google-services.json
+          
+          # Jitsi SDK требует FlutterFragmentActivity вместо FlutterActivity
+          sed -i 's/FlutterActivity/FlutterFragmentActivity/g' android/app/src/main/kotlin/com/family/buboglaziki/buboglaziki/MainActivity.kt
 
       - name: Get dependencies
         run: flutter pub get
