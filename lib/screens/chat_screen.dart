@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'call_screen.dart';
 import 'outgoing_call_screen.dart';
+import 'incoming_call_screen.dart';
 import '../services/jitsi_service.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -31,11 +32,72 @@ class _ChatScreenState extends State<ChatScreen> {
   final _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   String _currentUserName = 'Семьянин';
+  RealtimeChannel? _incomingCallChannel;
+  bool _isShowingIncomingCall = false;
 
   @override
   void initState() {
     super.initState();
     _fetchUserName();
+    _subscribeToIncomingCalls();
+  }
+
+  void _subscribeToIncomingCalls() {
+    final receiverId = int.tryParse(widget.currentUserId);
+    if (receiverId == null) return;
+
+    _incomingCallChannel = _supabase
+        .channel('chat_incoming_calls_${widget.currentUserId}_${widget.chatId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'calls',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'receiver_id',
+            value: receiverId,
+          ),
+          callback: (payload) async {
+            final record = payload.newRecord;
+            if (record['status'] != 'ringing') return;
+            if (_isShowingIncomingCall) return;
+
+            final callId = record['id']?.toString();
+            final callerId = record['caller_id']?.toString();
+            if (callId == null || callerId == null) return;
+
+            String callerName = 'Семьянин';
+            try {
+              final p = await _supabase
+                  .from('profiles')
+                  .select('display_name')
+                  .eq('id', int.parse(callerId))
+                  .single();
+              callerName = p['display_name'] ?? 'Семьянин';
+            } catch (_) {}
+
+            if (!mounted) return;
+            _isShowingIncomingCall = true;
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => IncomingCallScreen(
+                  callId: callId,
+                  callerName: callerName,
+                  isVideoCall: false,
+                  currentUserName: _currentUserName,
+                ),
+              ),
+            ).then((_) => _isShowingIncomingCall = false);
+          },
+        )
+        .subscribe();
+  }
+
+  @override
+  void dispose() {
+    _incomingCallChannel?.unsubscribe();
+    super.dispose();
   }
 
   Future<void> _fetchUserName() async {

@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'chat_screen.dart';
 import 'login_code_screen.dart';
+import 'incoming_call_screen.dart';
 import '../services/fcm_service.dart';
 
 class ChatListScreen extends StatefulWidget {
@@ -17,16 +18,97 @@ class _ChatListScreenState extends State<ChatListScreen> {
   final _supabase = Supabase.instance.client;
   List<dynamic> _profiles = [];
   bool _isLoading = true;
+  RealtimeChannel? _incomingCallChannel;
+  String _currentUserName = 'Семьянин';
+  // Защита от двойного открытия экрана входящего звонка
+  bool _isShowingIncomingCall = false;
 
   @override
   void initState() {
     super.initState();
     _fetchProfiles();
     _saveFcmToken();
+    _loadCurrentUserName();
+    _subscribeToIncomingCalls();
+  }
+
+  Future<void> _loadCurrentUserName() async {
+    try {
+      final res = await _supabase
+          .from('profiles')
+          .select('display_name')
+          .eq('id', widget.currentUserId)
+          .single();
+      _currentUserName = res['display_name'] ?? 'Семьянин';
+    } catch (_) {}
+  }
+
+  /// Подписка на входящие звонки через Supabase Realtime.
+  /// Это резервный канал — работает когда приложение открыто,
+  /// даже если FCM не доставил уведомление.
+  void _subscribeToIncomingCalls() {
+    final receiverId = int.tryParse(widget.currentUserId);
+    if (receiverId == null) return;
+
+    _incomingCallChannel = _supabase
+        .channel('incoming_calls_${widget.currentUserId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'calls',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'receiver_id',
+            value: receiverId,
+          ),
+          callback: (payload) async {
+            final record = payload.newRecord;
+            final status = record['status'];
+            if (status != 'ringing') return;
+            if (_isShowingIncomingCall) return;
+
+            final callId = record['id']?.toString();
+            final callerId = record['caller_id']?.toString();
+            if (callId == null || callerId == null) return;
+
+            // Получаем имя звонящего из базы
+            String callerName = 'Семьянин';
+            try {
+              final callerProfile = await _supabase
+                  .from('profiles')
+                  .select('display_name')
+                  .eq('id', int.parse(callerId))
+                  .single();
+              callerName = callerProfile['display_name'] ?? 'Семьянин';
+            } catch (_) {}
+
+            if (!mounted) return;
+            _showIncomingCall(callId, callerName, false);
+          },
+        )
+        .subscribe();
+  }
+
+  void _showIncomingCall(String callId, String callerName, bool isVideo) {
+    if (_isShowingIncomingCall || !mounted) return;
+    _isShowingIncomingCall = true;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => IncomingCallScreen(
+          callId: callId,
+          callerName: callerName,
+          isVideoCall: isVideo,
+          currentUserName: _currentUserName,
+        ),
+      ),
+    ).then((_) {
+      _isShowingIncomingCall = false;
+    });
   }
 
   Future<void> _saveFcmToken() async {
-    // Сохраняем токен с правильным числовым ID и подписываемся на его обновления
     await FcmService.saveTokenToDb(widget.currentUserId);
     FcmService.listenTokenRefresh(widget.currentUserId);
   }
@@ -61,7 +143,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       ids.sort();
       chatId = ids.join('_');
     }
-    
+
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -84,6 +166,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
         MaterialPageRoute(builder: (context) => const LoginCodeScreen()),
       );
     }
+  }
+
+  @override
+  void dispose() {
+    _incomingCallChannel?.unsubscribe();
+    super.dispose();
   }
 
   @override
