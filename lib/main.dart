@@ -12,11 +12,34 @@ import 'screens/incoming_call_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+// Глобальное имя текущего пользователя — заполняется после логина
+String currentUserDisplayName = 'Семьянин';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp();
   await FcmService.initialize();
+
+  await Supabase.initialize(
+    url: 'https://ayztdzspijsqlrfgyhnh.supabase.co',
+    anonKey: 'sb_publishable_uCUvGmHS9eRCKcDn6lg0wA_kN8VM6oE',
+  );
+
+  final prefs = await SharedPreferences.getInstance();
+  final savedProfileId = prefs.getString('saved_profile_id');
+
+  // Загружаем имя пользователя из базы, чтобы передавать его в IncomingCallScreen
+  if (savedProfileId != null) {
+    try {
+      final profile = await Supabase.instance.client
+          .from('profiles')
+          .select('display_name')
+          .eq('id', int.parse(savedProfileId))
+          .single();
+      currentUserDisplayName = profile['display_name'] ?? 'Семьянин';
+    } catch (_) {}
+  }
 
   // Ловим уведомления: когда мы внутри приложения, в фоне или когда закрыто
   await FcmService.setupInteractions((RemoteMessage message) {
@@ -32,21 +55,13 @@ Future<void> main() async {
               callId: callId,
               callerName: callerName,
               isVideoCall: isVideo,
-              currentUserName: 'Семьянин', // Можно заменить на реальное из базы, если надо
+              currentUserName: currentUserDisplayName,
             ),
           ),
         );
       }
     }
   });
-
-  await Supabase.initialize(
-    url: 'https://ayztdzspijsqlrfgyhnh.supabase.co',
-    anonKey: 'sb_publishable_uCUvGmHS9eRCKcDn6lg0wA_kN8VM6oE',
-  );
-
-  final prefs = await SharedPreferences.getInstance();
-  final savedProfileId = prefs.getString('saved_profile_id');
 
   runApp(MyApp(savedProfileId: savedProfileId));
 }

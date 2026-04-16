@@ -33,6 +33,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
   final _supabase = Supabase.instance.client;
   String? _callId;
   RealtimeChannel? _callSubscription;
+  bool _callHandled = false;
 
   @override
   void initState() {
@@ -66,9 +67,9 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
         );
       }
 
-      // 3. Начинаем слушать ответ
+      // 3. Начинаем слушать ответ через Realtime
       _callSubscription = _supabase
-          .channel('public:calls:id=eq.$_callId')
+          .channel('call_status_$_callId')
           .onPostgresChanges(
             event: PostgresChangeEvent.update,
             schema: 'public',
@@ -89,14 +90,55 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
           )
           .subscribe();
 
+      // 4. Polling как fallback + таймаут 30 секунд
+      _startPolling();
+
     } catch (e) {
       print('Ошибка инициализации звонка: \$e');
       if (mounted) Navigator.pop(context);
     }
   }
 
+  void _startPolling() async {
+    // Поллинг каждые 3 секунды, макс 30 секунд (фоллбэк если Realtime не сработал)
+    for (int i = 0; i < 10; i++) {
+      await Future.delayed(const Duration(seconds: 3));
+      if (_callHandled || !mounted || _callId == null) return;
+      try {
+        final row = await _supabase
+            .from('calls')
+            .select('status')
+            .eq('id', _callId!)
+            .single();
+        final status = row['status'];
+        if (status == 'accepted') {
+          _onCallAccepted();
+          return;
+        } else if (status == 'rejected') {
+          _onCallRejected();
+          return;
+        }
+      } catch (_) {}
+    }
+    // Таймаут: 30 секунд никто не ответил
+    if (!_callHandled && mounted) {
+      _callHandled = true;
+      _callSubscription?.unsubscribe();
+      if (_callId != null) {
+        await _supabase.from('calls').update({'status': 'ended'}).eq('id', _callId!);
+      }
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Нет ответа...')),
+        );
+      }
+    }
+  }
+
   void _onCallAccepted() {
-    if (!mounted) return;
+    if (_callHandled || !mounted) return;
+    _callHandled = true;
     _callSubscription?.unsubscribe();
 
     // Генерируем уникальную комнату на основе ID звонка
@@ -119,7 +161,8 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
   }
 
   void _onCallRejected() {
-    if (!mounted) return;
+    if (_callHandled || !mounted) return;
+    _callHandled = true;
     _callSubscription?.unsubscribe();
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
