@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-
+import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class CallScreen extends StatefulWidget {
@@ -22,6 +22,18 @@ class CallScreen extends StatefulWidget {
 class _CallScreenState extends State<CallScreen> {
   final GlobalKey webViewKey = GlobalKey();
   final _supabase = Supabase.instance.client;
+
+  @override
+  void initState() {
+    super.initState();
+    _ensurePermissions();
+  }
+
+  Future<void> _ensurePermissions() async {
+    final permissions = [Permission.microphone];
+    if (widget.isVideoCall) permissions.add(Permission.camera);
+    await permissions.request();
+  }
 
   @override
   void dispose() {

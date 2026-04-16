@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../services/fcm_sender.dart';
 import 'call_screen.dart';
 import '../services/jitsi_service.dart';
@@ -41,6 +42,11 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
 
   Future<void> _startCall() async {
     try {
+      // 0. Запрашиваем разрешения до открытия WebView — без них Jitsi не захватит аудио/видео
+      final permissions = [Permission.microphone];
+      if (widget.isVideoCall) permissions.add(Permission.camera);
+      await permissions.request();
+
       // 1. Создаем запись в базе
       final response = await _supabase.from('calls').insert({
         'caller_id': int.parse(widget.callerId),
