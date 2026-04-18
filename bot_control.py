@@ -31,7 +31,7 @@ MY_CHAT_ID = int(MY_CHAT_ID)
 # OpenRouter config & personality
 # ---------------------------------------------------------------------------
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_MODEL = "google/gemini-2.0-flash-lite:free"
+OPENROUTER_MODEL = "openai/gpt-oss-120b"
 
 SYSTEM_PROMPT = (
     "Ты — Кодя, остроумный ИИ-помощник крутого юриста и разработчика. "
