@@ -113,7 +113,7 @@ async def ask_openrouter(user_message: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# /code [text] — run opencode-ai "[text]" and send log
+# /code [text] — run opencode-ai run with auto-approve permissions
 # ---------------------------------------------------------------------------
 @dp.message(Command("code"))
 async def cmd_code(message: types.Message):
@@ -126,9 +126,14 @@ async def cmd_code(message: types.Message):
         return
 
     prompt = args[1]
-    command = f'opencode-ai "{prompt}"'
 
-    status_msg = await message.answer(f"Running: {command}")
+    # Auto-approve all actions (edit, bash, write, etc.) — no interactive prompts
+    env = os.environ.copy()
+    env["OPENCODE_PERMISSION"] = '{"*":"allow"}'
+
+    command = f'opencode-ai run "{prompt}"'
+
+    status_msg = await message.answer("Начинаю работу над файлами... 🔧")
 
     try:
         proc = await asyncio.create_subprocess_shell(
@@ -136,6 +141,7 @@ async def cmd_code(message: types.Message):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(PROJECT_ROOT),
+            env=env,
         )
         stdout, stderr = await proc.communicate()
 
@@ -149,16 +155,17 @@ async def cmd_code(message: types.Message):
         if len(full_log) > 4000:
             log_path = PROJECT_ROOT / "opencode_log.txt"
             log_path.write_text(full_log, encoding="utf-8")
+            await status_msg.edit_text("Готово! Лог слишком длинный, отправляю файлом 📄")
             await message.answer_document(
                 FSInputFile(str(log_path)),
-                caption="opencode-ai log (too long for message)",
+                caption="opencode-ai log",
             )
             log_path.unlink(missing_ok=True)
         else:
             await status_msg.edit_text(f"<pre>{full_log}</pre>", parse_mode="HTML")
 
     except Exception as e:
-        await status_msg.edit_text(f"Error: {e}")
+        await status_msg.edit_text(f"Ошибка: {e}")
 
 
 # ---------------------------------------------------------------------------
