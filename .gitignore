@@ -25,6 +25,8 @@ Thumbs.db
 *.log
 opencode_log.txt
 cmd_log.txt
+kodya_reply.txt
+kodya_reply.txt
 
 # Build
 build/

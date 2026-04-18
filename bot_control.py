@@ -4,9 +4,10 @@ import subprocess
 import logging
 from pathlib import Path
 
+import aiohttp
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandStart
 from aiogram.types import FSInputFile
 
 from watchdog.observers import Observer
@@ -19,11 +20,26 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 MY_CHAT_ID = os.getenv("MY_CHAT_ID")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 if not BOT_TOKEN or not MY_CHAT_ID:
     raise ValueError("Set BOT_TOKEN and MY_CHAT_ID in .env")
 
 MY_CHAT_ID = int(MY_CHAT_ID)
+
+# ---------------------------------------------------------------------------
+# OpenRouter config & personality
+# ---------------------------------------------------------------------------
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_MODEL = "google/gemini-2.0-flash-lite:free"
+
+SYSTEM_PROMPT = (
+    "Ты — Кодя, остроумный ИИ-помощник крутого юриста и разработчика. "
+    "Ты помогаешь развивать проект 'Buboglaziki' — семейный мессенджер на Flutter + Supabase. "
+    "Ты любишь порядок в коде и иногда можешь пошутить про кавалер-кинг-чарльз-спаниелей. "
+    "Твоя задача — быть полезным, вежливым, но с характером. "
+    "Отвечай кратко и по делу. Если спрашивают про код — давай конкретные решения."
+)
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -54,6 +70,46 @@ def _authorized(update) -> bool:
         log.warning("Unauthorized access attempt from chat_id=%s", chat_id)
         return False
     return True
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter — chat with Kodya
+# ---------------------------------------------------------------------------
+async def ask_openrouter(user_message: str) -> str:
+    """Send a message to OpenRouter and return the AI reply."""
+    if not OPENROUTER_API_KEY:
+        return "(OPENROUTER_API_KEY не задан в .env — Кодя пока не может болтать)"
+
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/googlaz/buboglaziki",
+        "X-Title": "Buboglaziki Bot Control",
+    }
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ],
+        "max_tokens": 1024,
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            OPENROUTER_URL, headers=headers, json=payload, timeout=30
+        ) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                log.error("OpenRouter error %d: %s", resp.status, text)
+                return f"Ошибка OpenRouter ({resp.status}): {text[:200]}"
+
+            data = await resp.json()
+            try:
+                return data["choices"][0]["message"]["content"]
+            except (KeyError, IndexError) as e:
+                log.error("Bad OpenRouter response: %s", data)
+                return f"Не удалось распарсить ответ: {e}"
 
 
 # ---------------------------------------------------------------------------
@@ -90,9 +146,7 @@ async def cmd_code(message: types.Message):
         if errors.strip():
             full_log += f"\n\n--- STDERR ---\n{errors}"
 
-        # Telegram message limit is 4096 chars
         if len(full_log) > 4000:
-            # Send as file
             log_path = PROJECT_ROOT / "opencode_log.txt"
             log_path.write_text(full_log, encoding="utf-8")
             await message.answer_document(
@@ -189,21 +243,79 @@ async def cmd_send(message: types.Message):
 
 
 # ---------------------------------------------------------------------------
-# /start, /help
+# /start — greeting
 # ---------------------------------------------------------------------------
-@dp.message(Command("start", "help"))
+@dp.message(CommandStart())
+async def cmd_start(message: types.Message):
+    if not _authorized(message):
+        return
+
+    greeting = (
+        "🐾 Кодя на связи!\n\n"
+        "Готов пилить Buboglaziki или просто поболтать. Чем займёмся?\n\n"
+        "/code [текст]  — запустить opencode-ai\n"
+        "/cmd [команда] — выполнить shell-команду\n"
+        "/send [путь]   — отправить файл\n"
+        "/help          — справка\n\n"
+        "Или просто напиши что-нибудь — поболтаем!"
+    )
+    await message.answer(greeting)
+
+
+# ---------------------------------------------------------------------------
+# /help
+# ---------------------------------------------------------------------------
+@dp.message(Command("help"))
 async def cmd_help(message: types.Message):
     if not _authorized(message):
         return
 
     help_text = (
-        "Available commands:\n\n"
-        "/code [text]  — run opencode-ai with the given prompt\n"
-        "/cmd [cmd]    — execute any shell command\n"
-        "/send [path]  — send a file from the project\n"
-        "/help         — show this message"
+        "Команды:\n\n"
+        "/code [текст]  — запустить opencode-ai с промптом\n"
+        "/cmd [команда] — выполнить любую shell-команду\n"
+        "/send [путь]   — отправить файл из проекта\n"
+        "/start         — приветствие Коди\n"
+        "/help          — эта справка\n\n"
+        "Без команды — просто поболтаем с Коди через нейросеть 🐶"
     )
     await message.answer(help_text)
+
+
+# ---------------------------------------------------------------------------
+# Catch-all — regular messages go to OpenRouter
+# ---------------------------------------------------------------------------
+@dp.message()
+async def on_regular_message(message: types.Message):
+    """Any text that is NOT a command → send to OpenRouter."""
+    if not _authorized(message):
+        return
+
+    if not message.text:
+        return
+
+    text = message.text.strip()
+    if text.startswith("/"):
+        return
+
+    typing = await message.answer("Кодя думает... 🐾")
+
+    try:
+        reply = await ask_openrouter(text)
+        if len(reply) > 4000:
+            reply_path = PROJECT_ROOT / "kodya_reply.txt"
+            reply_path.write_text(reply, encoding="utf-8")
+            await typing.delete()
+            await message.answer_document(
+                FSInputFile(str(reply_path)),
+                caption="Ответ Коди (слишком длинный для сообщения)",
+            )
+            reply_path.unlink(missing_ok=True)
+        else:
+            await typing.edit_text(reply)
+    except Exception as e:
+        log.exception("OpenRouter call failed")
+        await typing.edit_text(f"Кодя запнулся: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +328,7 @@ class AutoUploadHandler(FileSystemEventHandler):
         super().__init__()
         self._bot = bot_instance
         self._chat_id = chat_id
-        self._sent_files: set[str] = set()  # avoid duplicates on move events
+        self._sent_files: set[str] = set()
 
     def _should_send(self, path: str) -> bool:
         p = Path(path)
@@ -224,10 +336,8 @@ class AutoUploadHandler(FileSystemEventHandler):
             return False
         if str(p) in self._sent_files:
             return False
-        # .apk anywhere in project
         if p.suffix.lower() == ".apk":
             return True
-        # any file inside output/ directory
         try:
             p.relative_to(PROJECT_ROOT / "output")
             return True
@@ -246,7 +356,6 @@ class AutoUploadHandler(FileSystemEventHandler):
             )
 
     def on_moved(self, event):
-        """Handle file moves (e.g. download complete → final location)."""
         if event.is_directory:
             return
         if self._should_send(event.dest_path):
@@ -259,7 +368,6 @@ class AutoUploadHandler(FileSystemEventHandler):
     async def _send_file(self, path: str):
         try:
             p = Path(path)
-            # Small delay to make sure the file is fully written
             await asyncio.sleep(2)
             if not p.exists() or p.stat().st_size == 0:
                 return
@@ -277,9 +385,7 @@ class AutoUploadHandler(FileSystemEventHandler):
 # Main
 # ---------------------------------------------------------------------------
 async def main():
-    # Start watchdog
     event_handler = AutoUploadHandler(bot, MY_CHAT_ID)
-    # Pass the running event loop to the handler
     loop = asyncio.get_running_loop()
     event_handler._loop = loop
 
@@ -288,7 +394,6 @@ async def main():
     observer.start()
     log.info("Watchdog watching: %s", PROJECT_ROOT)
 
-    # Start polling
     log.info("Bot starting...")
     await dp.start_polling(bot)
 
