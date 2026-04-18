@@ -6,6 +6,12 @@ class AppTheme {
   static const Color backgroundColor = Color(0xFFF5F5DC); // Теплый бежевый
   static const Color accentColor = Color(0xFFFFB6C1); // Мягкий розовый акцент
   static const Color textColor = Color(0xFF333333);
+  
+  // Telegram-style message bubble colors
+  static const Color sentMessageColor = Color(0xFFE2FFC7); // Светло-зеленый для моих сообщений
+  static const Color receivedMessageColor = Color(0xFFFFFFFF); // Белый для сообщений собеседника
+  static const Color chatBackgroundColor = Color(0xFFE8E8E8); // Светло-серый фон чата
+  static const Color timestampColor = Color(0xFF999999); // Серый для времени
 
   static ThemeData get lightTheme {
     return ThemeData(

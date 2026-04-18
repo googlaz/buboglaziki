@@ -8,12 +8,13 @@ import 'call_screen.dart';
 import 'outgoing_call_screen.dart';
 import 'incoming_call_screen.dart';
 import '../services/jitsi_service.dart';
+import '../theme/app_theme.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
   final String title;
   final String currentUserId;
-  final String? otherUserId; // ID собеседника (null для группового чата)
+  final String? otherUserId;
 
   const ChatScreen({
     super.key,
@@ -241,98 +242,202 @@ class _ChatScreenState extends State<ChatScreen> {
                 
                 final messages = snapshot.data ?? [];
                 
-                return ListView.builder(
-                  reverse: true,
-                  controller: _scrollController,
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final msg = messages[index];
-                    final isMe = msg['sender_id'] == widget.currentUserId;
-                    final text = msg['content'];
-                    final imageUrl = msg['image_url'];
+                return Container(
+                  color: AppTheme.chatBackgroundColor,
+                  child: ListView.builder(
+                    reverse: true,
+                    controller: _scrollController,
+                    itemCount: messages.length,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemBuilder: (context, index) {
+                      final msg = messages[index];
+                      final isMe = msg['sender_id'] == widget.currentUserId;
+                      final text = msg['content'];
+                      final imageUrl = msg['image_url'];
+                      final timestamp = msg['created_at'] != null
+                          ? DateTime.parse(msg['created_at'])
+                          : DateTime.now();
+                      final timeStr = '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}';
 
-                    return Align(
-                      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: isMe ? const Color(0xFF90EE90) : Colors.white,
-                          borderRadius: BorderRadius.circular(16).copyWith(
-                            bottomRight: isMe ? const Radius.circular(0) : null,
-                            bottomLeft: !isMe ? const Radius.circular(0) : null,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (imageUrl != null)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 8.0),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Image.network(
-                                    imageUrl,
-                                    width: 200,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              ),
-                            if (text != null && text.isNotEmpty)
-                              Text(
-                                text,
-                                style: const TextStyle(fontSize: 20),
-                              ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+                      return _MessageBubble(
+                        isMe: isMe,
+                        text: text,
+                        imageUrl: imageUrl,
+                        timeStr: timeStr,
+                      );
+                    },
+                  ),
                 );
               },
             ),
           ),
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             color: Colors.white,
             child: Row(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.photo_library, size: 36, color: Colors.blueAccent),
+                  icon: const Icon(Icons.photo_library, size: 28, color: Colors.grey),
                   onPressed: _pickAndUploadImage,
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
                 Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    style: const TextStyle(fontSize: 20),
-                    maxLines: null,
-                    decoration: const InputDecoration(
-                      hintText: 'Введите сообщение...',
-                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F0F0),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: TextField(
+                      controller: _messageController,
+                      style: const TextStyle(fontSize: 18),
+                      maxLines: null,
+                      decoration: const InputDecoration(
+                        hintText: 'Сообщение...',
+                        hintStyle: TextStyle(fontSize: 18, color: Colors.grey),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        border: InputBorder.none,
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
                 CircleAvatar(
-                  backgroundColor: const Color(0xFF90EE90),
-                  radius: 26,
+                  backgroundColor: AppTheme.primaryColor,
+                  radius: 24,
                   child: IconButton(
-                    icon: const Icon(Icons.send, color: Colors.black87),
+                    icon: const Icon(Icons.send, color: Colors.white, size: 22),
                     onPressed: () => _sendMessage(text: _messageController.text),
                   ),
-                )
+                ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MessageBubble extends StatelessWidget {
+  final bool isMe;
+  final String? text;
+  final String? imageUrl;
+  final String timeStr;
+
+  const _MessageBubble({
+    required this.isMe,
+    this.text,
+    this.imageUrl,
+    required this.timeStr,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
+        margin: EdgeInsets.only(
+          left: isMe ? 56 : 12,
+          right: isMe ? 12 : 56,
+          top: 2,
+          bottom: 2,
+        ),
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        decoration: BoxDecoration(
+          color: isMe ? AppTheme.sentMessageColor : AppTheme.receivedMessageColor,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(16),
+            topRight: const Radius.circular(16),
+            bottomLeft: Radius.circular(isMe ? 16 : 4),
+            bottomRight: Radius.circular(isMe ? 4 : 16),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 3,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (imageUrl != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6.0),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    imageUrl!,
+                    width: 200,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return SizedBox(
+                        height: 150,
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            value: loadingProgress.expectedTotalBytes != null
+                                ? loadingProgress.cumulativeBytesLoaded /
+                                    loadingProgress.expectedTotalBytes!
+                                : null,
+                          ),
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return const SizedBox(
+                        height: 100,
+                        child: Center(
+                          child: Icon(Icons.broken_image, size: 40, color: Colors.grey),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Flexible(
+                  child: text != null && text!.isNotEmpty
+                      ? Text(
+                          text!,
+                          style: const TextStyle(fontSize: 18, height: 1.3),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                const SizedBox(width: 6),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      timeStr,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.timestampColor,
+                      ),
+                    ),
+                    if (isMe)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 3),
+                        child: Icon(
+                          Icons.done_all,
+                          size: 14,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
