@@ -7,6 +7,7 @@ import json
 import shutil
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command, CommandObject
+from aiogram.filters import ~Command
 from dotenv import load_dotenv
 
 # Загружаем настройки из .env
@@ -231,10 +232,11 @@ async def handle_code(message: types.Message, command: CommandObject):
         await message.answer(f"❌ Ошибка терминала: {e}")
 
 # ОБЫЧНЫЕ СООБЩЕНИЯ (Общение через нейросеть)
-@dp.message()
+# ВАЖНО: ~Command() — ловит ТОЛЬКО текст БЕЗ команд
+@dp.message(~Command())
 async def chat_handler(message: types.Message):
     if str(message.from_user.id) != MY_CHAT_ID: return
-    if not message.text or message.text.startswith('/'): return
+    if not message.text: return
 
     # Показываем статус "печатает", пока ИИ думает
     await bot.send_chat_action(message.chat.id, "typing")
