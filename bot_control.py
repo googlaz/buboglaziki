@@ -23,6 +23,49 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
+# Порт для фонового opencode сервера
+OPENCODE_SERVER_PORT = 4096
+OPENCODE_SERVER_URL = f"http://localhost:{OPENCODE_SERVER_PORT}"
+_opencode_server_proc = None  # ссылка на фоновый процесс
+
+
+async def _ensure_opencode_server():
+    """Запускает opencode serve если он ещё не запущен. Возвращает True если сервер готов."""
+    global _opencode_server_proc
+
+    # Проверяем, жив ли уже запущенный процесс
+    if _opencode_server_proc is not None and _opencode_server_proc.returncode is None:
+        return True
+
+    cli_path = shutil.which("opencode") or shutil.which("opencode-ai")
+    if not cli_path:
+        return False
+
+    env = os.environ.copy()
+    env["OPENCODE_PERMISSION"] = '{"*":"allow"}'
+
+    _opencode_server_proc = await asyncio.create_subprocess_exec(
+        cli_path, "serve", "--port", str(OPENCODE_SERVER_PORT),
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+        cwd=str(PROJECT_ROOT),
+        env=env,
+    )
+
+    # Ждём пока сервер поднимется
+    await asyncio.sleep(3)
+
+    if _opencode_server_proc.returncode is not None:
+        # Процесс уже завершился — значит порт занят или ошибка
+        _opencode_server_proc = None
+        return False
+
+    logging.info("opencode serve запущен (PID %s) на порту %s", _opencode_server_proc.pid, OPENCODE_SERVER_PORT)
+    return True
+
+
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+
 # Функция для запроса к OpenRouter (мозг Коди)
 async def get_ai_response(user_text):
     url = "https://openrouter.ai/api/v1/chat/completions"
@@ -164,29 +207,29 @@ async def handle_code(message: types.Message, command: CommandObject):
         return
 
     await message.answer(
-        f"🛠 Запускаю {cli_name} в режиме автономного редактирования...\n"
+        f"🛠 Запускаю {cli_name}...\n"
         f"Задача: {task[:300]}"
     )
 
     try:
-        # Env: разрешаем ВСЕ действия без подтверждения (доп. страховка)
+        # Запускаем фоновый сервер opencode если ещё не запущен
+        server_ready = await _ensure_opencode_server()
+        if not server_ready:
+            await message.answer("❌ Не удалось запустить opencode сервер")
+            return
+
         env = os.environ.copy()
         env["OPENCODE_PERMISSION"] = '{"*":"allow"}'
 
-        # Формируем команду: opencode run --dangerously-skip-permissions "задача"
-        # Задача передаётся отдельным аргументом — не через shell, чтобы избежать
-        # проблем с экранированием кавычек
-        
-        # ВАЖНО: OpenCode иногда падает с "Session not found" при переиспользовании кеша.
-        # Решение: отключаем кеш сессий через env var (если он есть)
-        # Это заставит OpenCode создать свежую сессию каждый раз
-        env["OPENCODE_DISABLE_SESSION_CACHE"] = "1"
-        
+        # opencode run --attach http://localhost:4096 --dangerously-skip-permissions "задача"
         process = await asyncio.create_subprocess_exec(
-            cli_path, *flags, task,
+            cli_path, "run",
+            "--attach", OPENCODE_SERVER_URL,
+            "--dangerously-skip-permissions",
+            task,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=os.getcwd(),
+            cwd=str(PROJECT_ROOT),
             env=env,
         )
 
@@ -280,16 +323,20 @@ async def chat_handler(message: types.Message):
             await message.answer(f"Ошибка отправки части {i}: {e}")
 
 async def main():
-    print(f"Кодя запущен (PID: {os.getpid()}) в папке: {os.getcwd()}")
+    print(f"Кодя запущен (PID: {os.getpid()}) в папке: {PROJECT_ROOT}")
 
-    # Проверка CLI для /code
+    # Запускаем opencode сервер заранее чтобы /code работало без задержки
     cli_path, cli_name, _ = _find_code_cli()
     if cli_path:
-        print(f"✅ CLI для /code найден: {cli_name} → {cli_path}")
+        print(f"✅ CLI найден: {cli_name} → {cli_path}")
+        print(f"🚀 Запускаю opencode сервер на порту {OPENCODE_SERVER_PORT}...")
+        ok = await _ensure_opencode_server()
+        if ok:
+            print(f"✅ opencode сервер готов: {OPENCODE_SERVER_URL}")
+        else:
+            print(f"⚠️  opencode сервер не запустился (порт {OPENCODE_SERVER_PORT} занят?)")
     else:
-        print("⚠️  ВНИМАНИЕ: не найден ни opencode, ни opencode-ai, ни claude.")
-        print("   Команда /code не сможет реально менять файлы!")
-        print("   Установи: npm i -g opencode-ai  (или @anthropic-ai/claude-code)")
+        print("⚠️  opencode не найден. Команда /code не будет менять файлы.")
 
     await dp.start_polling(bot, skip_updates=True)
 
