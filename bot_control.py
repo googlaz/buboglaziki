@@ -130,10 +130,10 @@ def _find_code_cli():
     """Возвращает (путь, имя, список_флагов_перед_задачей) для первого найденного CLI."""
     # Для opencode используем:
     # --dangerously-skip-permissions — авто-подтверждение всех действий
-    # --fork — создаёт новую сессию вместо использования старой (если та была)
+    # (--fork требует --continue/--session и не нужен для новых сессий)
     candidates = [
-        ("opencode",    "opencode",    ["run", "--dangerously-skip-permissions", "--fork"]),
-        ("opencode-ai", "opencode-ai", ["run", "--dangerously-skip-permissions", "--fork"]),
+        ("opencode",    "opencode",    ["run", "--dangerously-skip-permissions"]),
+        ("opencode-ai", "opencode-ai", ["run", "--dangerously-skip-permissions"]),
         ("claude",      "claude",      ["--yes"]),
     ]
     for name, label, flags in candidates:
@@ -176,6 +176,12 @@ async def handle_code(message: types.Message, command: CommandObject):
         # Формируем команду: opencode run --dangerously-skip-permissions "задача"
         # Задача передаётся отдельным аргументом — не через shell, чтобы избежать
         # проблем с экранированием кавычек
+        
+        # ВАЖНО: OpenCode иногда падает с "Session not found" при переиспользовании кеша.
+        # Решение: отключаем кеш сессий через env var (если он есть)
+        # Это заставит OpenCode создать свежую сессию каждый раз
+        env["OPENCODE_DISABLE_SESSION_CACHE"] = "1"
+        
         process = await asyncio.create_subprocess_exec(
             cli_path, *flags, task,
             stdout=asyncio.subprocess.PIPE,
