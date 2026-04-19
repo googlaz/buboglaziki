@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'chat_screen.dart';
 import 'login_code_screen.dart';
 import 'incoming_call_screen.dart';
+import 'profile_screen.dart';
 import '../services/fcm_service.dart';
 
 class ChatListScreen extends StatefulWidget {
@@ -20,6 +21,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   bool _isLoading = true;
   RealtimeChannel? _incomingCallChannel;
   String _currentUserName = 'Семьянин';
+  String _currentUserAvatarUrl = '';
   // Защита от двойного открытия экрана входящего звонка
   bool _isShowingIncomingCall = false;
 
@@ -36,10 +38,15 @@ class _ChatListScreenState extends State<ChatListScreen> {
     try {
       final res = await _supabase
           .from('profiles')
-          .select('display_name')
+          .select('display_name, avatar_url')
           .eq('id', widget.currentUserId)
           .single();
-      _currentUserName = res['display_name'] ?? 'Семьянин';
+      if (mounted) {
+        setState(() {
+          _currentUserName = res['display_name'] ?? 'Семьянин';
+          _currentUserAvatarUrl = res['avatar_url'] ?? '';
+        });
+      }
     } catch (_) {}
   }
 
@@ -180,6 +187,33 @@ class _ChatListScreenState extends State<ChatListScreen> {
       appBar: AppBar(
         title: const Text('Чаты'),
         actions: [
+          // Аватарка текущего пользователя → открыть свой профиль
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ProfileScreen(
+                    profileId: widget.currentUserId,
+                    currentUserId: widget.currentUserId,
+                  ),
+                ),
+              ).then((_) => _loadCurrentUserName());
+            },
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: CircleAvatar(
+                radius: 18,
+                backgroundColor: Colors.white24,
+                backgroundImage: _currentUserAvatarUrl.isNotEmpty
+                    ? NetworkImage(_currentUserAvatarUrl)
+                    : null,
+                child: _currentUserAvatarUrl.isEmpty
+                    ? const Icon(Icons.person, size: 20, color: Colors.white)
+                    : null,
+              ),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _logout,
@@ -213,13 +247,31 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
                       return ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                        leading: CircleAvatar(
-                          radius: 35,
-                          backgroundColor: const Color(0xFF90EE90),
-                          backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
-                          child: avatarUrl.isEmpty ? const Icon(Icons.person, size: 30) : null,
+                        leading: GestureDetector(
+                          // Нажатие на аватарку → профиль
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ProfileScreen(
+                                  profileId: profile['id'].toString(),
+                                  currentUserId: widget.currentUserId,
+                                ),
+                              ),
+                            );
+                          },
+                          child: CircleAvatar(
+                            radius: 35,
+                            backgroundColor: const Color(0xFF90EE90),
+                            backgroundImage:
+                                avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                            child: avatarUrl.isEmpty
+                                ? const Icon(Icons.person, size: 30)
+                                : null,
+                          ),
                         ),
                         title: Text(name, style: const TextStyle(fontSize: 20)),
+                        // Нажатие на строку → чат
                         onTap: () => _openChat(name, profile['id'].toString(), false),
                       );
                     },
