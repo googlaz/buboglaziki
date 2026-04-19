@@ -154,7 +154,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final content = text?.trim();
     _messageController.clear();
 
-    final data = {
+    final data = <String, dynamic>{
       'chat_id': widget.chatId,
       'sender_id': widget.currentUserId,
       'content': content,
@@ -162,9 +162,14 @@ class _ChatScreenState extends State<ChatScreen> {
       'created_at': DateTime.now().toUtc().toIso8601String(),
     };
 
-    // Если отвечаем на сообщение — сохраняем reply_to_id
+    // Если отвечаем на сообщение — сохраняем id + снапшот текста и имени
     if (_replyToMessage != null) {
       data['reply_to_id'] = _replyToMessage!['id']?.toString();
+      data['reply_to_content'] = (_replyToMessage!['content'] as String? ?? '').isNotEmpty
+          ? _replyToMessage!['content'] as String
+          : '📷 Фото';
+      final replySenderId = (_replyToMessage!['sender_id'] ?? '').toString();
+      data['reply_to_sender_name'] = _senderNames[replySenderId] ?? 'Семьянин';
     }
 
     await _supabase.from('messages').insert(data);
@@ -313,21 +318,28 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // Удалить у меня — помечаем в массиве deleted_for
+  // Удалить у меня — помечаем в массиве deleted_for через RPC
   Future<void> _deleteForMe(Map<String, dynamic> msg) async {
     try {
       final msgId = msg['id'];
-      final currentDeletedFor =
-          (msg['deleted_for'] as List?)?.cast<dynamic>() ?? [];
+      // Получаем свежие данные о сообщении из БД
+      final fresh = await _supabase
+          .from('messages')
+          .select('deleted_for')
+          .eq('id', msgId)
+          .single();
 
-      // Добавляем текущего пользователя в массив deleted_for
+      final currentDeletedFor =
+          ((fresh['deleted_for'] as List?)?.cast<String>() ?? <String>[]);
+
       if (!currentDeletedFor.contains(widget.currentUserId)) {
         currentDeletedFor.add(widget.currentUserId);
       }
 
       await _supabase
           .from('messages')
-          .update({'deleted_for': currentDeletedFor}).eq('id', msgId);
+          .update({'deleted_for': currentDeletedFor})
+          .eq('id', msgId);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -392,17 +404,22 @@ class _ChatScreenState extends State<ChatScreen> {
       final ids = [widget.currentUserId, targetUserId]..sort();
       final targetChatId = ids.join('_');
 
+      // Определяем оригинального отправителя
+      final originalSenderId = (msg['sender_id'] ?? '').toString();
+      final originalSenderName = _senderNames[originalSenderId] ?? _currentUserName;
+
       await _supabase.from('messages').insert({
         'chat_id': targetChatId,
         'sender_id': widget.currentUserId,
         'content': msg['content'],
         'image_url': msg['image_url'],
+        'forwarded_from_name': originalSenderName,
         'created_at': DateTime.now().toUtc().toIso8601String(),
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Сообщение переслано')),
+          const SnackBar(content: Text('Сообщение переслано ✓')),
         );
       }
     } catch (e) {
@@ -551,6 +568,9 @@ class _ChatScreenState extends State<ChatScreen> {
                           timeStr: timeStr,
                           senderName: senderName,
                           senderId: senderId,
+                          replyToContent: msg['reply_to_content'] as String?,
+                          replyToSenderName: msg['reply_to_sender_name'] as String?,
+                          forwardedFromName: msg['forwarded_from_name'] as String?,
                         ),
                       );
                     },
@@ -693,6 +713,9 @@ class _MessageBubble extends StatelessWidget {
   final String timeStr;
   final String? senderName;
   final String senderId;
+  final String? replyToContent;
+  final String? replyToSenderName;
+  final String? forwardedFromName;
 
   const _MessageBubble({
     required this.isMe,
@@ -701,6 +724,9 @@ class _MessageBubble extends StatelessWidget {
     required this.timeStr,
     required this.senderId,
     this.senderName,
+    this.replyToContent,
+    this.replyToSenderName,
+    this.forwardedFromName,
   });
 
   @override
@@ -738,6 +764,7 @@ class _MessageBubble extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Имя отправителя в группе
                 if (senderName != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -749,6 +776,78 @@ class _MessageBubble extends StatelessWidget {
                         color: _colorForSender(senderId),
                         height: 1.2,
                       ),
+                    ),
+                  ),
+                // Плашка «Переслано от ...»
+                if (forwardedFromName != null)
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.forward, size: 14, color: Colors.blueGrey),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            'Переслано от $forwardedFromName',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontStyle: FontStyle.italic,
+                              color: Colors.blueGrey,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                // Цитата при ответе
+                if (replyToContent != null)
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+                    padding: const EdgeInsets.fromLTRB(10, 5, 10, 5),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        left: BorderSide(
+                          color: isMe ? const Color(0xFF4CAF50) : Colors.blueAccent,
+                          width: 3,
+                        ),
+                      ),
+                      color: Colors.black.withOpacity(0.05),
+                      borderRadius: const BorderRadius.only(
+                        topRight: Radius.circular(6),
+                        bottomRight: Radius.circular(6),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (replyToSenderName != null)
+                          Text(
+                            replyToSenderName!,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: isMe ? const Color(0xFF4CAF50) : Colors.blueAccent,
+                            ),
+                          ),
+                        Text(
+                          replyToContent!.length > 60
+                              ? '${replyToContent!.substring(0, 60)}...'
+                              : replyToContent!,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.black54,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
                   ),
                 if (imageUrl != null)
