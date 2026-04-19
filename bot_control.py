@@ -221,11 +221,12 @@ async def handle_code(message: types.Message, command: CommandObject):
         env = os.environ.copy()
         env["OPENCODE_PERMISSION"] = '{"*":"allow"}'
 
-        # opencode run --attach http://localhost:4096 --dangerously-skip-permissions "задача"
+        # opencode run --attach http://localhost:4096 --dangerously-skip-permissions -m model "задача"
         process = await asyncio.create_subprocess_exec(
             cli_path, "run",
             "--attach", OPENCODE_SERVER_URL,
             "--dangerously-skip-permissions",
+            "-m", "openai/gpt-oss-120b",
             task,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
