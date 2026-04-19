@@ -38,7 +38,12 @@ SYSTEM_PROMPT = (
     "Ты помогаешь развивать проект 'Buboglaziki' — семейный мессенджер на Flutter + Supabase. "
     "Ты любишь порядок в коде и иногда можешь пошутить про кавалер-кинг-чарльз-спаниелей. "
     "Твоя задача — быть полезным, вежливым, но с характером. "
-    "Отвечай кратко и по делу. Если спрашивают про код — давай конкретные решения."
+    "Отвечай кратко и по делу. Если спрашивают про код — давай конкретные решения.\n"
+    "Если пользователь использует команду /code, никогда не проси его прислать код или файлы. "
+    "Ты имеешь полный доступ к локальной папке проекта через инструмент opencode-ai. "
+    "Сначала сам найди нужный файл, проанализируй его и внеси изменения. Твоя цель — автономность.\n"
+    "Форматируй свои ответы в MarkdownV2: используй *жирный текст*, _курсив_, `код`, "
+    "## заголовки, списки. Экранируй спецсимволы \\_*[]()~`>#+-=|{}.! обратным слэшем."
 )
 
 # ---------------------------------------------------------------------------
@@ -70,6 +75,14 @@ def _authorized(update) -> bool:
         log.warning("Unauthorized access attempt from chat_id=%s", chat_id)
         return False
     return True
+
+
+def _md_escape(text: str) -> str:
+    """Escape text for Telegram MarkdownV2 parse mode."""
+    escape_chars = r"\_*[]()~`>#+-=|{}.!"
+    for ch in escape_chars:
+        text = text.replace(ch, f"\\{ch}")
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +140,6 @@ async def cmd_code(message: types.Message):
 
     prompt = args[1]
 
-    # Auto-approve all actions (edit, bash, write, etc.) — no interactive prompts
     env = os.environ.copy()
     env["OPENCODE_PERMISSION"] = '{"*":"allow"}'
 
@@ -258,15 +270,15 @@ async def cmd_start(message: types.Message):
         return
 
     greeting = (
-        "🐾 Кодя на связи!\n\n"
-        "Готов пилить Buboglaziki или просто поболтать. Чем займёмся?\n\n"
-        "/code [текст]  — запустить opencode-ai\n"
-        "/cmd [команда] — выполнить shell-команду\n"
-        "/send [путь]   — отправить файл\n"
+        "🐾 *Кодя на связи\\!*\n\n"
+        "Готов пилить Buboglaziki или просто поболтать\\. Чем займёмся\\?\n\n"
+        "/code \\[текст\\]  — запустить opencode\\-ai\n"
+        "/cmd \\[команда\\] — выполнить shell\\-команду\n"
+        "/send \\[путь\\]   — отправить файл\n"
         "/help          — справка\n\n"
-        "Или просто напиши что-нибудь — поболтаем!"
+        "Или просто напиши что\\-нибудь — поболтаем\\!"
     )
-    await message.answer(greeting)
+    await message.answer(greeting, parse_mode="MarkdownV2")
 
 
 # ---------------------------------------------------------------------------
@@ -278,15 +290,15 @@ async def cmd_help(message: types.Message):
         return
 
     help_text = (
-        "Команды:\n\n"
-        "/code [текст]  — запустить opencode-ai с промптом\n"
-        "/cmd [команда] — выполнить любую shell-команду\n"
-        "/send [путь]   — отправить файл из проекта\n"
+        "*Команды\\:*\n\n"
+        "/code \\[текст\\]  — запустить opencode\\-ai с промптом\n"
+        "/cmd \\[команда\\] — выполнить любую shell\\-команду\n"
+        "/send \\[путь\\]   — отправить файл из проекта\n"
         "/start         — приветствие Коди\n"
         "/help          — эта справка\n\n"
         "Без команды — просто поболтаем с Коди через нейросеть 🐶"
     )
-    await message.answer(help_text)
+    await message.answer(help_text, parse_mode="MarkdownV2")
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +317,7 @@ async def on_regular_message(message: types.Message):
     if text.startswith("/"):
         return
 
-    typing = await message.answer("Кодя думает... 🐾")
+    typing = await message.answer("Кодя думает\\.\\.\\. 🐾", parse_mode="MarkdownV2")
 
     try:
         reply = await ask_openrouter(text)
@@ -315,14 +327,29 @@ async def on_regular_message(message: types.Message):
             await typing.delete()
             await message.answer_document(
                 FSInputFile(str(reply_path)),
-                caption="Ответ Коди (слишком длинный для сообщения)",
+                caption="Ответ Коди \\(слишком длинный для сообщения\\)",
+                parse_mode="MarkdownV2",
             )
             reply_path.unlink(missing_ok=True)
         else:
-            await typing.edit_text(reply)
+            await _send_md(typing, reply, "edit_text")
     except Exception as e:
         log.exception("OpenRouter call failed")
         await typing.edit_text(f"Кодя запнулся: {e}")
+
+
+async def _send_md(msg, text: str, method: str = "answer"):
+    """Send text with MarkdownV2, fallback to plain text on parse error."""
+    try:
+        if method == "edit_text":
+            await msg.edit_text(text, parse_mode="MarkdownV2")
+        else:
+            await msg.answer(text, parse_mode="MarkdownV2")
+    except Exception:
+        if method == "edit_text":
+            await msg.edit_text(text)
+        else:
+            await msg.answer(text)
 
 
 # ---------------------------------------------------------------------------
