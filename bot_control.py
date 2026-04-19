@@ -8,6 +8,7 @@ import aiohttp
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command, CommandStart
+from aiogram.filters.command import CommandObject
 from aiogram.types import FSInputFile
 
 from watchdog.observers import Observer
@@ -126,58 +127,34 @@ async def ask_openrouter(user_message: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# /code [text] — run opencode-ai run with auto-approve permissions
+# /code [text] — run opencode-ai with --apply for direct file editing
 # ---------------------------------------------------------------------------
 @dp.message(Command("code"))
-async def cmd_code(message: types.Message):
-    if not _authorized(message):
+async def handle_code_command(message: types.Message, command: CommandObject):
+    if str(message.from_user.id) != MY_CHAT_ID:
         return
 
-    args = message.text.strip().split(maxsplit=1)
-    if len(args) < 2:
-        await message.answer("Usage: /code [prompt text]")
+    user_prompt = command.args
+    if not user_prompt:
+        await message.answer("Напиши задачу после /code, например: /code исправь время")
         return
 
-    prompt = args[1]
-
-    env = os.environ.copy()
-    env["OPENCODE_PERMISSION"] = '{"*":"allow"}'
-
-    command = f'opencode-ai run "{prompt}"'
-
-    status_msg = await message.answer("Начинаю работу над файлами... 🔧")
+    await message.answer("🚀 Кодя пошел работать в OpenCode... Подожди немного.")
 
     try:
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(PROJECT_ROOT),
-            env=env,
+        result = subprocess.run(
+            f'opencode-ai "{user_prompt}" --apply',
+            shell=True,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
         )
-        stdout, stderr = await proc.communicate()
 
-        output = stdout.decode("utf-8", errors="replace")
-        errors = stderr.decode("utf-8", errors="replace")
-
-        full_log = f"Exit code: {proc.returncode}\n\n--- STDOUT ---\n{output}"
-        if errors.strip():
-            full_log += f"\n\n--- STDERR ---\n{errors}"
-
-        if len(full_log) > 4000:
-            log_path = PROJECT_ROOT / "opencode_log.txt"
-            log_path.write_text(full_log, encoding="utf-8")
-            await status_msg.edit_text("Готово! Лог слишком длинный, отправляю файлом 📄")
-            await message.answer_document(
-                FSInputFile(str(log_path)),
-                caption="opencode-ai log",
-            )
-            log_path.unlink(missing_ok=True)
-        else:
-            await status_msg.edit_text(f"<pre>{full_log}</pre>", parse_mode="HTML")
+        report = result.stdout if result.stdout else result.stderr
+        await message.answer(f"✅ Кодя закончил! Вот отчет:\n\n{report[:3000]}")
 
     except Exception as e:
-        await status_msg.edit_text(f"Ошибка: {e}")
+        await message.answer(f"❌ Ошибка при запуске OpenCode: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -433,4 +410,6 @@ async def main():
 
 
 if __name__ == "__main__":
+    asyncio.run(main())
+f __name__ == "__main__":
     asyncio.run(main())
