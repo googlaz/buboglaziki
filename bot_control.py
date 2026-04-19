@@ -411,5 +411,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-f __name__ == "__main__":
-    asyncio.run(main())
