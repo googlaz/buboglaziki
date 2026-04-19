@@ -1,6 +1,7 @@
 import os
 import asyncio
 import subprocess
+import shlex
 import logging
 from pathlib import Path
 
@@ -127,31 +128,42 @@ async def ask_openrouter(user_message: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# /code [text] — run opencode-ai with --apply for direct file editing
+# /code [text] — run opencode-ai with -y --apply for direct file editing
 # ---------------------------------------------------------------------------
 @dp.message(Command("code"))
 async def handle_code_command(message: types.Message, command: CommandObject):
+    # 1. Проверка безопасности (только ты!)
     if str(message.from_user.id) != MY_CHAT_ID:
         return
 
-    user_prompt = command.args
-    if not user_prompt:
-        await message.answer("Напиши задачу после /code, например: /code исправь время")
+    user_task = command.args
+    if not user_task:
+        await message.answer("⚠️ Напиши задачу, например: /code исправь время")
         return
 
-    await message.answer("🚀 Кодя пошел работать в OpenCode... Подожди немного.")
+    await message.answer("🛠 Кодя принял приказ. Взламываю реальность (запускаю OpenCode)...")
 
     try:
-        result = subprocess.run(
-            f'opencode-ai "{user_prompt}" --apply --yes',
+        # 2. Формируем прямую команду для терминала
+        full_command = f'opencode-ai "{user_task}" -y --apply'
+
+        # 3. Запускаем процесс
+        process = subprocess.run(
+            full_command,
             shell=True,
             capture_output=True,
             text=True,
             encoding='utf-8',
         )
 
-        report = result.stdout if result.stdout else result.stderr
-        await message.answer(f"✅ Кодя закончил! Вот отчет:\n\n{report[:3000]}")
+        # 4. Отправляем результат работы терминала
+        output = process.stdout if process.stdout else process.stderr
+
+        if output:
+            # Ограничиваем длину сообщения (в Telegram лимит 4096 символов)
+            await message.answer(f"✅ Готово! Отчёт из терминала:\n\n{output[:4000]}")
+        else:
+            await message.answer("✅ Готово! OpenCode отработал без вывода в терминал.")
 
     except Exception as e:
         await message.answer(f"❌ Ошибка при запуске OpenCode: {e}")
