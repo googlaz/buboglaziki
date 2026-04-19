@@ -58,7 +58,55 @@ class FcmSender {
       );
       print('FCM Send Response: ${res.statusCode} ${res.body}');
     } catch (e) {
-      print('Ошибка при отправке FCM пуша: \$e');
+      print('Ошибка при отправке FCM пуша (звонок): $e');
+    }
+  }
+
+  static Future<void> sendMessageNotification({
+    required String targetToken,
+    required String senderName,
+    required String messageText,
+    required String chatId,
+  }) async {
+    try {
+      final token = await _getAccessToken();
+      final url = Uri.parse('https://fcm.googleapis.com/v1/projects/bubumes/messages:send');
+
+      // Для сообщений типа "image" передаем вместо пустого текста "Фотография"
+      final bodyText = messageText.isEmpty ? '📷 Фотография' : messageText;
+
+      final payload = {
+        'message': {
+          'token': targetToken,
+          'notification': {
+            'title': senderName,
+            'body': bodyText,
+          },
+          'data': {
+            'type': 'message',
+            'chat_id': chatId,
+          },
+          'android': {
+            'priority': 'high',
+            'notification': {
+              'channel_id': 'messages_channel',
+              'sound': 'default'
+            }
+          }
+        }
+      };
+
+      final res = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(payload),
+      );
+      print('FCM Message Send Response: ${res.statusCode} ${res.body}');
+    } catch (e) {
+      print('Ошибка при отправке FCM пуша (сообщение): $e');
     }
   }
 }

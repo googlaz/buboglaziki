@@ -2,6 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:convert';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -22,7 +23,21 @@ class FcmService {
         AndroidInitializationSettings('@mipmap/ic_launcher');
     const InitializationSettings initializationSettings =
         InitializationSettings(android: initializationSettingsAndroid);
-    await _localNotifications.initialize(initializationSettings);
+        
+    await _localNotifications.initialize(
+      initializationSettings,
+      onDidReceiveNotificationResponse: (response) {
+        if (response.payload != null) {
+          try {
+            final data = jsonDecode(response.payload!);
+            // Convert to a format that looks like RemoteMessage to pass to main
+            _onNotificationTapCallback?.call(RemoteMessage(data: Map<String, dynamic>.from(data)));
+          } catch (e) {
+            print('FCM: Error parsing local notification payload: $e');
+          }
+        }
+      },
+    );
 
     // 3. Запрос разрешений
     await _messaging.requestPermission(
@@ -31,8 +46,8 @@ class FcmService {
       sound: true,
     );
 
-    // 4. Настройка канала для Android (чтобы всплывало сверху)
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    // 4. Настройка каналов для Android
+    const AndroidNotificationChannel callsChannel = AndroidNotificationChannel(
       'calls_channel',
       'Звонки',
       description: 'Уведомления о входящих вызовах',
@@ -40,9 +55,17 @@ class FcmService {
       playSound: true,
     );
 
-    await _localNotifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(channel);
+    const AndroidNotificationChannel messagesChannel = AndroidNotificationChannel(
+      'messages_channel',
+      'Сообщения',
+      description: 'Новые сообщения',
+      importance: Importance.high,
+      playSound: true,
+    );
+
+    final androidImplementation = _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    await androidImplementation?.createNotificationChannel(callsChannel);
+    await androidImplementation?.createNotificationChannel(messagesChannel);
   }
 
   static Future<String?> getToken() async {
@@ -81,9 +104,40 @@ class FcmService {
     });
   }
 
+  static Function(RemoteMessage)? _onNotificationTapCallback;
+
   static Future<void> setupInteractions(Function(RemoteMessage) onMessageReceived) async {
+    _onNotificationTapCallback = onMessageReceived;
+
     // 1. Слушаем сообщения, когда приложение открыто (foreground)
-    FirebaseMessaging.onMessage.listen(onMessageReceived);
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      print('FCM: onMessage foreground: ${message.data}');
+      // Показываем уведомление вручную для Android
+      final notification = message.notification;
+      final android = message.notification?.android;
+      
+      if (notification != null && android != null) {
+        final channelId = android.channelId ?? 'messages_channel';
+        _localNotifications.show(
+          notification.hashCode,
+          notification.title,
+          notification.body,
+          NotificationDetails(
+            android: AndroidNotificationDetails(
+              channelId,
+              channelId == 'calls_channel' ? 'Звонки' : 'Сообщения',
+              importance: Importance.max,
+              priority: Priority.high,
+              icon: '@mipmap/ic_launcher',
+            ),
+          ),
+          payload: jsonEncode(message.data),
+        );
+      }
+      
+      // Вызываем callback (для звонков чтобы экран сам открылся, если надо)
+      onMessageReceived(message);
+    });
 
     // 2. Слушаем клик по уведомлению, когда приложение было в фоне (background)
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {

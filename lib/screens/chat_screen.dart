@@ -8,6 +8,7 @@ import 'call_screen.dart';
 import 'outgoing_call_screen.dart';
 import 'incoming_call_screen.dart';
 import '../services/jitsi_service.dart';
+import '../services/fcm_sender.dart';
 import '../theme/app_theme.dart';
 
 // Цвета имён отправителей для группового чата (как в Telegram)
@@ -173,6 +174,40 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     await _supabase.from('messages').insert(data);
+
+    // Рассылка пуш-уведомлений
+    try {
+      if (widget.otherUserId != null) {
+        // Личный чат
+        final receiverId = int.parse(widget.otherUserId!);
+        final p = await _supabase.from('profiles').select('fcm_token').eq('id', receiverId).single();
+        final token = p['fcm_token'] as String?;
+        if (token != null && token.isNotEmpty) {
+          FcmSender.sendMessageNotification(
+            targetToken: token,
+            senderName: _currentUserName,
+            messageText: content ?? '',
+            chatId: widget.chatId,
+          );
+        }
+      } else {
+        // Групповой чат - достаем всех кроме себя
+        final profiles = await _supabase.from('profiles').select('fcm_token').neq('id', int.parse(widget.currentUserId));
+        for (var row in profiles as List) {
+          final token = row['fcm_token'] as String?;
+          if (token != null && token.isNotEmpty) {
+            FcmSender.sendMessageNotification(
+              targetToken: token,
+              senderName: '$_currentUserName (Вся семья)',
+              messageText: content ?? '',
+              chatId: widget.chatId,
+            );
+          }
+        }
+      }
+    } catch (e) {
+      print('Ошибка при рассылке уведомлений: $e');
+    }
 
     if (mounted) setState(() => _replyToMessage = null);
   }

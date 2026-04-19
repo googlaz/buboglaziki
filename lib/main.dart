@@ -9,6 +9,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'services/fcm_service.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'screens/incoming_call_screen.dart';
+import 'screens/chat_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -56,6 +57,28 @@ Future<void> main() async {
               callerName: callerName,
               isVideoCall: isVideo,
               currentUserName: currentUserDisplayName,
+            ),
+          ),
+        );
+      }
+    } else if (message.data['type'] == 'message') {
+      final String? chatId = message.data['chat_id'];
+      if (chatId != null && savedProfileId != null) {
+        final isGroup = chatId == 'family_group';
+        String? targetUserId;
+        if (!isGroup) {
+          final ids = chatId.split('_');
+          targetUserId = ids.firstWhere((id) => id != savedProfileId, orElse: () => '');
+          if (targetUserId.isEmpty) targetUserId = null;
+        }
+
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => ChatScreen(
+              chatId: chatId,
+              title: isGroup ? 'Вся семья' : 'Диалог',
+              currentUserId: savedProfileId,
+              otherUserId: targetUserId,
             ),
           ),
         );
