@@ -16,7 +16,7 @@ MY_CHAT_ID = os.getenv("MY_CHAT_ID")
 OR_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 # Настройки модели
-MODEL_ID = "openrouter/openai/gpt-4.1"
+MODEL_ID = "openrouter/openai/gpt-oss-120b"
 
 logging.basicConfig(level=logging.INFO)
 
@@ -229,7 +229,7 @@ async def handle_code(message: types.Message, command: CommandObject):
         process = await asyncio.create_subprocess_exec(
             cli_path, "run",
             "--attach", OPENCODE_SERVER_URL,
-            "-m", "openrouter/openai/gpt-4.1",
+            "-m", "openrouter/openai/gpt-oss-120b",
             task,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
