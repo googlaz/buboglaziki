@@ -128,11 +128,12 @@ async def cmd_shell(message: types.Message, command: CommandObject):
 # Ищем установленный CLI-инструмент для автономного кодинга
 def _find_code_cli():
     """Возвращает (путь, имя, список_флагов_перед_задачей) для первого найденного CLI."""
-    # Для opencode используем --dangerously-skip-permissions — это единственный способ
-    # заставить его реально менять файлы без интерактивных промптов.
+    # Для opencode используем:
+    # --dangerously-skip-permissions — авто-подтверждение всех действий
+    # --fork — создаёт новую сессию вместо использования старой (если та была)
     candidates = [
-        ("opencode",    "opencode",    ["run", "--dangerously-skip-permissions"]),
-        ("opencode-ai", "opencode-ai", ["run", "--dangerously-skip-permissions"]),
+        ("opencode",    "opencode",    ["run", "--dangerously-skip-permissions", "--fork"]),
+        ("opencode-ai", "opencode-ai", ["run", "--dangerously-skip-permissions", "--fork"]),
         ("claude",      "claude",      ["--yes"]),
     ]
     for name, label, flags in candidates:
