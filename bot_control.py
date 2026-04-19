@@ -42,8 +42,11 @@ async def _ensure_opencode_server():
         return False
 
     env = os.environ.copy()
+    # Передаём разрешения через env (дублируем opencode.json на случай если он не найден)
     env["OPENCODE_PERMISSION"] = '{"*":"allow"}'
 
+    # ВАЖНО: cwd=PROJECT_ROOT — сервер должен стартовать из папки проекта,
+    # чтобы видеть opencode.json с permission: allow и знать над каким проектом работать
     _opencode_server_proc = await asyncio.create_subprocess_exec(
         cli_path, "serve", "--port", str(OPENCODE_SERVER_PORT),
         stdout=asyncio.subprocess.DEVNULL,
@@ -52,11 +55,10 @@ async def _ensure_opencode_server():
         env=env,
     )
 
-    # Ждём пока сервер поднимется
-    await asyncio.sleep(3)
+    # Ждём пока сервер поднимется (нужно ~2-3 секунды)
+    await asyncio.sleep(4)
 
     if _opencode_server_proc.returncode is not None:
-        # Процесс уже завершился — значит порт занят или ошибка
         _opencode_server_proc = None
         return False
 
@@ -221,11 +223,12 @@ async def handle_code(message: types.Message, command: CommandObject):
         env = os.environ.copy()
         env["OPENCODE_PERMISSION"] = '{"*":"allow"}'
 
-        # opencode run --attach http://localhost:4096 --dangerously-skip-permissions -m model "задача"
+        # opencode run --attach http://localhost:4096 -m model "задача"
+        # --dangerously-skip-permissions не нужен через --attach:
+        # разрешения берутся из opencode.json в папке проекта (permission: {"*":"allow"})
         process = await asyncio.create_subprocess_exec(
             cli_path, "run",
             "--attach", OPENCODE_SERVER_URL,
-            "--dangerously-skip-permissions",
             "-m", "openai/gpt-oss-120b",
             task,
             stdout=asyncio.subprocess.PIPE,
