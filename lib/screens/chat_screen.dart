@@ -12,12 +12,12 @@ import '../theme/app_theme.dart';
 
 // Цвета имён отправителей для группового чата (как в Telegram)
 const List<Color> _senderNameColors = [
-  Color(0xFFE53935), // красный
-  Color(0xFF8E24AA), // фиолетовый
-  Color(0xFF1E88E5), // синий
-  Color(0xFF00897B), // бирюзовый
-  Color(0xFFF4511E), // оранжевый
-  Color(0xFF6D4C41), // коричневый
+  Color(0xFFE53935),
+  Color(0xFF8E24AA),
+  Color(0xFF1E88E5),
+  Color(0xFF00897B),
+  Color(0xFFF4511E),
+  Color(0xFF6D4C41),
 ];
 
 Color _colorForSender(String senderId) {
@@ -51,8 +51,11 @@ class _ChatScreenState extends State<ChatScreen> {
   RealtimeChannel? _incomingCallChannel;
   bool _isShowingIncomingCall = false;
 
-  // Кеш: sender_id (строка) → display_name
+  // Кеш: sender_id → display_name
   final Map<String, String> _senderNames = {};
+
+  // Ответ на сообщение
+  Map<String, dynamic>? _replyToMessage;
 
   @override
   void initState() {
@@ -62,7 +65,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _subscribeToIncomingCalls();
   }
 
-  /// Загружаем все профили заранее, чтобы знать имена в сообщениях
   Future<void> _fetchAllProfiles() async {
     try {
       final rows = await _supabase.from('profiles').select('id, display_name');
@@ -131,6 +133,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _incomingCallChannel?.unsubscribe();
+    _messageController.dispose();
     super.dispose();
   }
 
@@ -141,9 +144,7 @@ class _ChatScreenState extends State<ChatScreen> {
           .select('display_name')
           .eq('id', widget.currentUserId)
           .single();
-      setState(() {
-        _currentUserName = res['display_name'];
-      });
+      setState(() => _currentUserName = res['display_name']);
     } catch (_) {}
   }
 
@@ -153,13 +154,22 @@ class _ChatScreenState extends State<ChatScreen> {
     final content = text?.trim();
     _messageController.clear();
 
-    await _supabase.from('messages').insert({
+    final data = {
       'chat_id': widget.chatId,
       'sender_id': widget.currentUserId,
       'content': content,
       'image_url': imageUrl,
-      'created_at': DateTime.now().toIso8601String(),
-    });
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+    };
+
+    // Если отвечаем на сообщение — сохраняем reply_to_id
+    if (_replyToMessage != null) {
+      data['reply_to_id'] = _replyToMessage!['id']?.toString();
+    }
+
+    await _supabase.from('messages').insert(data);
+
+    if (mounted) setState(() => _replyToMessage = null);
   }
 
   Future<void> _pickAndUploadImage() async {
@@ -177,7 +187,6 @@ class _ChatScreenState extends State<ChatScreen> {
             bytes,
             fileOptions: FileOptions(contentType: 'image/$fileExt'),
           );
-
       final imageUrl =
           _supabase.storage.from('family-media').getPublicUrl(fileName);
       await _sendMessage(imageUrl: imageUrl);
@@ -190,11 +199,225 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Контекстное меню при долгом нажатии
+  // -------------------------------------------------------------------------
+  void _showMessageMenu(
+      BuildContext context, Map<String, dynamic> msg, bool isMe) {
+    final text = msg['content'] as String? ?? '';
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Превью сообщения
+            if (text.isNotEmpty)
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Text(
+                  text.length > 80 ? '${text.substring(0, 80)}...' : text,
+                  style: const TextStyle(
+                      color: Colors.grey, fontSize: 13, height: 1.3),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            const Divider(height: 1),
+            // Ответить
+            ListTile(
+              leading: const Icon(Icons.reply, color: Colors.blue),
+              title: const Text('Ответить'),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() => _replyToMessage = msg);
+              },
+            ),
+            // Переслать
+            ListTile(
+              leading: const Icon(Icons.forward, color: Colors.green),
+              title: const Text('Переслать'),
+              onTap: () {
+                Navigator.pop(context);
+                _showForwardDialog(msg);
+              },
+            ),
+            // Удалить
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text('Удалить',
+                  style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(context);
+                _showDeleteDialog(msg, isMe);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Диалог удаления
+  // -------------------------------------------------------------------------
+  void _showDeleteDialog(Map<String, dynamic> msg, bool isMe) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Удалить сообщение?'),
+        content: const Text('Выберите способ удаления:'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _deleteForMe(msg);
+            },
+            child: const Text('Удалить у меня'),
+          ),
+          if (isMe)
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await _deleteForAll(msg);
+              },
+              child: const Text('Удалить у всех',
+                  style: TextStyle(color: Colors.red)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // Удалить у всех — полное удаление из БД (только своё сообщение)
+  Future<void> _deleteForAll(Map<String, dynamic> msg) async {
+    try {
+      await _supabase
+          .from('messages')
+          .delete()
+          .eq('id', msg['id']);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка удаления: $e')),
+        );
+      }
+    }
+  }
+
+  // Удалить у меня — помечаем в массиве deleted_for
+  Future<void> _deleteForMe(Map<String, dynamic> msg) async {
+    try {
+      final msgId = msg['id'];
+      final currentDeletedFor =
+          (msg['deleted_for'] as List?)?.cast<dynamic>() ?? [];
+
+      // Добавляем текущего пользователя в массив deleted_for
+      if (!currentDeletedFor.contains(widget.currentUserId)) {
+        currentDeletedFor.add(widget.currentUserId);
+      }
+
+      await _supabase
+          .from('messages')
+          .update({'deleted_for': currentDeletedFor}).eq('id', msgId);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка: $e')),
+        );
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Диалог пересылки
+  // -------------------------------------------------------------------------
+  void _showForwardDialog(Map<String, dynamic> msg) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Переслать в чат'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: FutureBuilder<List<Map<String, dynamic>>>(
+            future: _supabase
+                .from('profiles')
+                .select('id, display_name')
+                .neq('id', widget.currentUserId),
+            builder: (ctx, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final profiles = snapshot.data ?? [];
+              return ListView.builder(
+                shrinkWrap: true,
+                itemCount: profiles.length,
+                itemBuilder: (ctx, i) {
+                  final p = profiles[i];
+                  return ListTile(
+                    leading: const CircleAvatar(child: Icon(Icons.person)),
+                    title: Text(p['display_name'] ?? 'Семьянин'),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      await _forwardMessage(msg, p['id'].toString());
+                    },
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _forwardMessage(
+      Map<String, dynamic> msg, String targetUserId) async {
+    try {
+      // Формируем chatId для личного чата с получателем
+      final ids = [widget.currentUserId, targetUserId]..sort();
+      final targetChatId = ids.join('_');
+
+      await _supabase.from('messages').insert({
+        'chat_id': targetChatId,
+        'sender_id': widget.currentUserId,
+        'content': msg['content'],
+        'image_url': msg['image_url'],
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Сообщение переслано')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка пересылки: $e')),
+        );
+      }
+    }
+  }
+
   void _startCall(bool isVideo) async {
     if (widget.otherUserId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Звонки доступны только в личном чате')),
+        const SnackBar(content: Text('Звонки доступны только в личном чате')),
       );
       return;
     }
@@ -213,8 +436,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (receiverToken.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text(
-                  'Собеседник ещё не открывал приложение. Попросите его открыть Бубоглазики!')),
+              content: Text('Собеседник ещё не открывал приложение.')),
         );
         return;
       }
@@ -279,7 +501,14 @@ class _ChatScreenState extends State<ChatScreen> {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final messages = snapshot.data ?? [];
+                final allMessages = snapshot.data ?? [];
+
+                // Фильтруем сообщения удалённые "у меня"
+                final messages = allMessages.where((msg) {
+                  final deletedFor =
+                      (msg['deleted_for'] as List?)?.cast<dynamic>() ?? [];
+                  return !deletedFor.contains(widget.currentUserId);
+                }).toList();
 
                 return Container(
                   color: AppTheme.chatBackgroundColor,
@@ -290,20 +519,16 @@ class _ChatScreenState extends State<ChatScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     itemBuilder: (context, index) {
                       final msg = messages[index];
-
-                      // ключевое исправление: приводим оба значения к String
-                      final senderId =
-                          (msg['sender_id'] ?? '').toString();
+                      final senderId = (msg['sender_id'] ?? '').toString();
                       final isMe = senderId == widget.currentUserId;
-
                       final text = msg['content'] as String?;
                       final imageUrl = msg['image_url'] as String?;
 
+                      // Время: UTC → локальное время пользователя
                       DateTime timestamp;
                       try {
                         timestamp = msg['created_at'] != null
-                            ? DateTime.parse(
-                                    msg['created_at'].toString())
+                            ? DateTime.parse(msg['created_at'].toString())
                                 .toLocal()
                             : DateTime.now();
                       } catch (_) {
@@ -312,18 +537,21 @@ class _ChatScreenState extends State<ChatScreen> {
                       final timeStr =
                           '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}';
 
-                      // Имя отправителя — показываем только в группе для чужих
                       final senderName = isGroupChat && !isMe
                           ? (_senderNames[senderId] ?? 'Семьянин')
                           : null;
 
-                      return _MessageBubble(
-                        isMe: isMe,
-                        text: text,
-                        imageUrl: imageUrl,
-                        timeStr: timeStr,
-                        senderName: senderName,
-                        senderId: senderId,
+                      return GestureDetector(
+                        onLongPress: () =>
+                            _showMessageMenu(context, msg, isMe),
+                        child: _MessageBubble(
+                          isMe: isMe,
+                          text: text,
+                          imageUrl: imageUrl,
+                          timeStr: timeStr,
+                          senderName: senderName,
+                          senderId: senderId,
+                        ),
                       );
                     },
                   ),
@@ -338,69 +566,124 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildInputBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x18000000),
-            blurRadius: 4,
-            offset: Offset(0, -1),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Плашка ответа — показывается когда выбрано сообщение для ответа
+        if (_replyToMessage != null)
+          Container(
+            color: const Color(0xFFF0F0F0),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 3,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _senderNames[
+                                (_replyToMessage!['sender_id'] ?? '')
+                                    .toString()] ??
+                            'Сообщение',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                      Text(
+                        (_replyToMessage!['content'] as String? ?? '')
+                            .replaceAll('\n', ' '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 13, color: Colors.black54),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: () =>
+                      setState(() => _replyToMessage = null),
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.photo_library,
-                size: 28, color: Colors.grey),
-            onPressed: _pickAndUploadImage,
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Container(
-              constraints: const BoxConstraints(maxHeight: 120),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF0F0F0),
-                borderRadius: BorderRadius.circular(24),
+        // Поле ввода
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Color(0x18000000),
+                blurRadius: 4,
+                offset: Offset(0, -1),
               ),
-              child: TextField(
-                controller: _messageController,
-                style: const TextStyle(fontSize: 18),
-                maxLines: null,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  hintText: 'Сообщение...',
-                  hintStyle:
-                      TextStyle(fontSize: 18, color: Colors.grey),
-                  contentPadding: EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 10),
-                  border: InputBorder.none,
+            ],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.photo_library,
+                    size: 28, color: Colors.grey),
+                onPressed: _pickAndUploadImage,
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Container(
+                  constraints: const BoxConstraints(maxHeight: 120),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0F0F0),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: TextField(
+                    controller: _messageController,
+                    style: const TextStyle(fontSize: 18),
+                    maxLines: null,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      hintText: 'Сообщение...',
+                      hintStyle: TextStyle(fontSize: 18, color: Colors.grey),
+                      contentPadding: EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      border: InputBorder.none,
+                    ),
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(width: 8),
+              CircleAvatar(
+                backgroundColor: AppTheme.primaryColor,
+                radius: 24,
+                child: IconButton(
+                  icon:
+                      const Icon(Icons.send, color: Colors.white, size: 22),
+                  onPressed: () =>
+                      _sendMessage(text: _messageController.text),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          CircleAvatar(
-            backgroundColor: AppTheme.primaryColor,
-            radius: 24,
-            child: IconButton(
-              icon: const Icon(Icons.send,
-                  color: Colors.white, size: 22),
-              onPressed: () =>
-                  _sendMessage(text: _messageController.text),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// _MessageBubble — отдельный виджет для одного сообщения
+// _MessageBubble
 // ---------------------------------------------------------------------------
 
 class _MessageBubble extends StatelessWidget {
@@ -408,9 +691,7 @@ class _MessageBubble extends StatelessWidget {
   final String? text;
   final String? imageUrl;
   final String timeStr;
-  /// Имя отправителя; null — не отображать (мои сообщения или личный чат)
   final String? senderName;
-  /// ID отправителя — для детерминированного выбора цвета имени
   final String senderId;
 
   const _MessageBubble({
@@ -441,7 +722,6 @@ class _MessageBubble extends StatelessWidget {
             borderRadius: BorderRadius.only(
               topLeft: const Radius.circular(18),
               topRight: const Radius.circular(18),
-              // Telegram-стиль: «хвостик» в нижнем углу со стороны отправителя
               bottomLeft: Radius.circular(isMe ? 18 : 4),
               bottomRight: Radius.circular(isMe ? 4 : 18),
             ),
@@ -458,7 +738,6 @@ class _MessageBubble extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Имя отправителя — только для входящих в групповом чате
                 if (senderName != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -472,8 +751,6 @@ class _MessageBubble extends StatelessWidget {
                       ),
                     ),
                   ),
-
-                // Фото (если есть)
                 if (imageUrl != null)
                   Padding(
                     padding: EdgeInsets.fromLTRB(
@@ -508,8 +785,6 @@ class _MessageBubble extends StatelessWidget {
                       ),
                     ),
                   ),
-
-                // Текст + время
                 Padding(
                   padding: EdgeInsets.fromLTRB(
                     12,
@@ -521,7 +796,6 @@ class _MessageBubble extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      // Текст сообщения
                       Flexible(
                         child: (text != null && text!.isNotEmpty)
                             ? Text(
@@ -534,8 +808,6 @@ class _MessageBubble extends StatelessWidget {
                               )
                             : const SizedBox.shrink(),
                       ),
-
-                      // Время и галочки — прижаты к правому нижнему краю
                       Padding(
                         padding: const EdgeInsets.only(left: 6, bottom: 1),
                         child: Row(
