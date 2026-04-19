@@ -5,6 +5,26 @@ on:
     branches:
       - main
       - master
+    paths:
+      # Папки Flutter-приложения
+      - 'lib/**'
+      - 'android/**'
+      - 'ios/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      # Конфиги и ресурсы проекта
+      - 'assets/**'
+      - 'google-services.json'
+      - 'android/app/build.gradle'
+      # Не собираем если меняются только эти файлы:
+      - '!bot_control.py'
+      - '!.env'
+      - '!requirements.txt'
+      - '!AGENTS.md'
+      - '!BOT_README.md'
+      - '!opencode.json'
+      - '!.gitignore'
+      - '!README.md'
   workflow_dispatch:
 
 jobs:
