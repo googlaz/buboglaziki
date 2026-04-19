@@ -143,7 +143,7 @@ async def handle_code_command(message: types.Message, command: CommandObject):
 
     try:
         result = subprocess.run(
-            f'opencode-ai "{user_prompt}" --apply',
+            f'opencode-ai "{user_prompt}" --apply --yes',
             shell=True,
             capture_output=True,
             text=True,
