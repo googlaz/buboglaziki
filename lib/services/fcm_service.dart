@@ -3,6 +3,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -39,14 +40,25 @@ class FcmService {
       },
     );
 
-    // 3. Запрос разрешений
+    // 3. Запрос разрешений Firebase (iOS)
     await _messaging.requestPermission(
       alert: true,
       badge: true,
       sound: true,
     );
 
-    // 4. Настройка каналов для Android
+    // 4. Запрос разрешения POST_NOTIFICATIONS для Android 13+ (API 33+)
+    // Это КРИТИЧЕСКИ ВАЖНО — без этого уведомления не показываются на Android 13+
+    if (Platform.isAndroid) {
+      final androidPlugin = _localNotifications
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if (androidPlugin != null) {
+        final granted = await androidPlugin.requestNotificationsPermission();
+        print('FCM: POST_NOTIFICATIONS permission granted: $granted');
+      }
+    }
+
+    // 5. Настройка каналов для Android
     const AndroidNotificationChannel callsChannel = AndroidNotificationChannel(
       'calls_channel',
       'Звонки',
@@ -66,6 +78,14 @@ class FcmService {
     final androidImplementation = _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     await androidImplementation?.createNotificationChannel(callsChannel);
     await androidImplementation?.createNotificationChannel(messagesChannel);
+
+    // 6. Показывать foreground-уведомления от Firebase (для фонового/terminated обработчика)
+    // Это позволяет системе автоматически показывать notification-часть
+    await _messaging.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
   }
 
   static Future<String?> getToken() async {
@@ -90,7 +110,7 @@ class FcmService {
           .from('profiles')
           .update({'fcm_token': token})
           .eq('id', numericId);
-      print('FCM: токен сохранён для профиля $profileId');
+      print('FCM: токен сохранён для профиля $profileId → ${token.substring(0, 20)}...');
     } catch (e) {
       print('FCM: ошибка сохранения токена: $e');
     }
@@ -106,37 +126,67 @@ class FcmService {
 
   static Function(RemoteMessage)? _onNotificationTapCallback;
 
+  /// Показывает локальное уведомление — работает и из notification, и из data-only
+  static Future<void> _showLocalNotification(RemoteMessage message) async {
+    // Определяем заголовок и текст из notification или из data
+    String? title = message.notification?.title;
+    String? body = message.notification?.body;
+
+    // Fallback: если notification-часть пустая, строим из data
+    if (title == null || title.isEmpty) {
+      final type = message.data['type'];
+      if (type == 'call') {
+        title = 'Входящий звонок';
+        body = 'Вам звонит ${message.data['caller_name'] ?? 'кто-то'}';
+      } else if (type == 'message') {
+        title = message.data['sender_name'] ?? 'Новое сообщение';
+        body = message.data['message_text'] ?? 'Новое сообщение';
+      } else {
+        title = 'Бубоглазики';
+        body = 'Новое уведомление';
+      }
+    }
+
+    // Определяем канал
+    final type = message.data['type'];
+    final channelId = type == 'call' ? 'calls_channel' : 'messages_channel';
+    final channelName = type == 'call' ? 'Звонки' : 'Сообщения';
+
+    await _localNotifications.show(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000, // уникальный ID
+      title,
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          channelId,
+          channelName,
+          importance: type == 'call' ? Importance.max : Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+          playSound: true,
+        ),
+      ),
+      payload: jsonEncode(message.data),
+    );
+  }
+
   static Future<void> setupInteractions(Function(RemoteMessage) onMessageReceived) async {
     _onNotificationTapCallback = onMessageReceived;
 
     // 1. Слушаем сообщения, когда приложение открыто (foreground)
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
       print('FCM: onMessage foreground: ${message.data}');
-      // Показываем уведомление вручную для Android
-      final notification = message.notification;
-      final android = message.notification?.android;
-      
-      if (notification != null && android != null) {
-        final channelId = android.channelId ?? 'messages_channel';
-        _localNotifications.show(
-          notification.hashCode,
-          notification.title,
-          notification.body,
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              channelId,
-              channelId == 'calls_channel' ? 'Звонки' : 'Сообщения',
-              importance: Importance.max,
-              priority: Priority.high,
-              icon: '@mipmap/ic_launcher',
-            ),
-          ),
-          payload: jsonEncode(message.data),
-        );
-      }
+      print('FCM: notification title: ${message.notification?.title}');
+      print('FCM: notification body: ${message.notification?.body}');
+
+      // Показываем уведомление вручную для Android (foreground)
+      // Не зависим от message.notification?.android — оно часто null
+      await _showLocalNotification(message);
       
       // Вызываем callback (для звонков чтобы экран сам открылся, если надо)
-      onMessageReceived(message);
+      if (message.data['type'] == 'call') {
+        onMessageReceived(message);
+      }
     });
 
     // 2. Слушаем клик по уведомлению, когда приложение было в фоне (background)

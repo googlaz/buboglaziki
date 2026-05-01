@@ -183,7 +183,7 @@ class _ChatScreenState extends State<ChatScreen> {
         final p = await _supabase.from('profiles').select('fcm_token').eq('id', receiverId).single();
         final token = p['fcm_token'] as String?;
         if (token != null && token.isNotEmpty) {
-          FcmSender.sendMessageNotification(
+          await FcmSender.sendMessageNotification(
             targetToken: token,
             senderName: _currentUserName,
             messageText: content ?? '',
@@ -196,7 +196,7 @@ class _ChatScreenState extends State<ChatScreen> {
         for (var row in profiles as List) {
           final token = row['fcm_token'] as String?;
           if (token != null && token.isNotEmpty) {
-            FcmSender.sendMessageNotification(
+            await FcmSender.sendMessageNotification(
               targetToken: token,
               senderName: '$_currentUserName (Вся семья)',
               messageText: content ?? '',
