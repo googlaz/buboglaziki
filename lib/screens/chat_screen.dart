@@ -8,7 +8,7 @@ import 'call_screen.dart';
 import 'outgoing_call_screen.dart';
 import 'incoming_call_screen.dart';
 import '../services/jitsi_service.dart';
-import '../services/fcm_sender.dart';
+import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 
 // Цвета имён отправителей для группового чата (как в Telegram)
@@ -61,6 +61,8 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    // Помечаем, что пользователь сейчас в этом чате — уведомления для него не нужны
+    NotificationService.activeOpenChatId = widget.chatId;
     _fetchUserName();
     _fetchAllProfiles();
     _subscribeToIncomingCalls();
@@ -133,6 +135,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    // Пользователь вышел из чата — разрешаем уведомления для него
+    NotificationService.activeOpenChatId = null;
     _incomingCallChannel?.unsubscribe();
     _messageController.dispose();
     super.dispose();
@@ -175,46 +179,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
     await _supabase.from('messages').insert(data);
 
-    // Рассылка пуш-уведомлений
-    try {
-      if (widget.otherUserId != null) {
-        // Личный чат
-        final receiverId = int.parse(widget.otherUserId!);
-        print('PUSH: отправляю уведомление для receiverId=$receiverId');
-        final p = await _supabase.from('profiles').select('fcm_token').eq('id', receiverId).single();
-        final token = p['fcm_token'] as String?;
-        print('PUSH: токен получателя: ${token != null ? "${token.substring(0, 20)}..." : "NULL"}');
-        if (token != null && token.isNotEmpty) {
-          await FcmSender.sendMessageNotification(
-            targetToken: token,
-            senderName: _currentUserName,
-            messageText: content ?? '',
-            chatId: widget.chatId,
-          );
-          print('PUSH: уведомление отправлено ✓');
-        } else {
-          print('PUSH: токен пуст или null — уведомление НЕ отправлено');
-        }
-      } else {
-        // Групповой чат - достаем всех кроме себя
-        final profiles = await _supabase.from('profiles').select('fcm_token').neq('id', int.parse(widget.currentUserId));
-        print('PUSH: групповой чат, найдено ${(profiles as List).length} получателей');
-        for (var row in profiles) {
-          final token = row['fcm_token'] as String?;
-          if (token != null && token.isNotEmpty) {
-            await FcmSender.sendMessageNotification(
-              targetToken: token,
-              senderName: '$_currentUserName (Вся семья)',
-              messageText: content ?? '',
-              chatId: widget.chatId,
-            );
-            print('PUSH: групповое уведомление отправлено ✓');
-          }
-        }
-      }
-    } catch (e) {
-      print('PUSH ERROR: ошибка при рассылке уведомлений: $e');
-    }
+    // Уведомления теперь приходят через Supabase Realtime (в chat_list_screen)
+    // — не нужен Firebase/Google для отправки пушей!
 
     if (mounted) setState(() => _replyToMessage = null);
   }
@@ -490,15 +456,6 @@ class _ChatScreenState extends State<ChatScreen> {
       final receiverId = otherProfile['id']?.toString() ?? '';
       final receiverName = otherProfile['display_name'] ?? 'Семья';
       final receiverUrl = otherProfile['avatar_url'] ?? '';
-      final receiverToken = otherProfile['fcm_token'] ?? '';
-
-      if (receiverToken.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Собеседник ещё не открывал приложение.')),
-        );
-        return;
-      }
 
       if (mounted) {
         Navigator.push(
@@ -508,7 +465,6 @@ class _ChatScreenState extends State<ChatScreen> {
               receiverId: receiverId,
               receiverName: receiverName,
               receiverAvatarUrl: receiverUrl,
-              receiverFcmToken: receiverToken,
               callerId: widget.currentUserId,
               callerName: _currentUserName,
               isVideoCall: isVideo,

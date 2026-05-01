@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'chat_list_screen.dart';
-import '../services/fcm_service.dart';
+
 
 class ProfileSelectionScreen extends StatefulWidget {
   const ProfileSelectionScreen({super.key});
@@ -45,10 +45,7 @@ class _ProfileSelectionScreenState extends State<ProfileSelectionScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('saved_profile_id', profileId);
 
-    // Сохраняем FCM-токен с правильным числовым ID
-    await FcmService.saveTokenToDb(profileId);
-    // Слушаем обновление токена при его ротации
-    FcmService.listenTokenRefresh(profileId);
+    // FCM-токены больше не нужны — уведомления через Supabase Realtime
 
     if (mounted) {
       Navigator.pushReplacement(

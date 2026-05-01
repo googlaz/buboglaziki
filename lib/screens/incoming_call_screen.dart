@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'call_screen.dart';
 import '../services/jitsi_service.dart';
-import '../services/fcm_service.dart';
+import '../services/notification_service.dart';
 
 class IncomingCallScreen extends StatefulWidget {
   final String callId;
@@ -30,12 +30,12 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
   void initState() {
     super.initState();
     // Убираем уведомление о звонке — пользователь уже видит экран
-    FcmService.cancelCallNotification();
+    NotificationService.cancelCallNotification();
   }
 
   Future<void> _acceptCall() async {
     // Убираем уведомление
-    await FcmService.cancelCallNotification();
+    await NotificationService.cancelCallNotification();
     // Даем права перед ответом, иначе зависнет
     await [Permission.microphone, Permission.camera].request();
 
@@ -62,7 +62,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
   }
 
   Future<void> _rejectCall() async {
-    await FcmService.cancelCallNotification();
+    await NotificationService.cancelCallNotification();
     await _supabase.from('calls').update({'status': 'rejected'}).eq('id', widget.callId);
     if (mounted) Navigator.pop(context);
   }

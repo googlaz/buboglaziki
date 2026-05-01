@@ -5,7 +5,7 @@ import 'chat_screen.dart';
 import 'login_code_screen.dart';
 import 'incoming_call_screen.dart';
 import 'profile_screen.dart';
-import '../services/fcm_service.dart';
+import '../services/notification_service.dart';
 
 class ChatListScreen extends StatefulWidget {
   final String currentUserId;
@@ -20,18 +20,21 @@ class _ChatListScreenState extends State<ChatListScreen> {
   List<dynamic> _profiles = [];
   bool _isLoading = true;
   RealtimeChannel? _incomingCallChannel;
+  RealtimeChannel? _newMessagesChannel;
   String _currentUserName = 'Семьянин';
   String _currentUserAvatarUrl = '';
-  // Защита от двойного открытия экрана входящего звонка
   bool _isShowingIncomingCall = false;
+
+  // Кеш имён профилей: id → display_name
+  final Map<String, String> _profileNames = {};
 
   @override
   void initState() {
     super.initState();
     _fetchProfiles();
-    _saveFcmToken();
     _loadCurrentUserName();
     _subscribeToIncomingCalls();
+    _subscribeToNewMessages();
   }
 
   Future<void> _loadCurrentUserName() async {
@@ -50,9 +53,66 @@ class _ChatListScreenState extends State<ChatListScreen> {
     } catch (_) {}
   }
 
-  /// Подписка на входящие звонки через Supabase Realtime.
-  /// Это резервный канал — работает когда приложение открыто,
-  /// даже если FCM не доставил уведомление.
+  // =========================================================================
+  // Подписка на НОВЫЕ СООБЩЕНИЯ через Supabase Realtime
+  // Это работает БЕЗ Google/Firebase — через WebSocket напрямую с Supabase
+  // =========================================================================
+  void _subscribeToNewMessages() {
+    _newMessagesChannel = _supabase
+        .channel('new_messages_for_${widget.currentUserId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'messages',
+          callback: (payload) async {
+            final record = payload.newRecord;
+            final senderId = record['sender_id']?.toString() ?? '';
+            final chatId = record['chat_id']?.toString() ?? '';
+            final content = record['content']?.toString() ?? '';
+            final imageUrl = record['image_url']?.toString() ?? '';
+
+            // Не показываем уведомление о своих сообщениях
+            if (senderId == widget.currentUserId) return;
+
+            // Не показываем, если пользователь уже в этом чате
+            if (NotificationService.activeOpenChatId == chatId) return;
+
+            // Получаем имя отправителя из кеша или из базы
+            String senderName = _profileNames[senderId] ?? '';
+            if (senderName.isEmpty) {
+              try {
+                final p = await _supabase
+                    .from('profiles')
+                    .select('display_name')
+                    .eq('id', int.parse(senderId))
+                    .single();
+                senderName = p['display_name'] ?? 'Семьянин';
+                _profileNames[senderId] = senderName;
+              } catch (_) {
+                senderName = 'Семьянин';
+              }
+            }
+
+            // Определяем текст
+            String messageText = content;
+            if (messageText.isEmpty && imageUrl.isNotEmpty) {
+              messageText = '📷 Фотография';
+            }
+
+            // Показываем уведомление!
+            await NotificationService.showMessageNotification(
+              senderName: senderName,
+              messageText: messageText,
+              chatId: chatId,
+            );
+          },
+        )
+        .subscribe();
+  }
+
+  // =========================================================================
+  // Подписка на входящие звонки через Supabase Realtime
+  // =========================================================================
   void _subscribeToIncomingCalls() {
     final receiverId = int.tryParse(widget.currentUserId);
     if (receiverId == null) return;
@@ -78,7 +138,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
             final callerId = record['caller_id']?.toString();
             if (callId == null || callerId == null) return;
 
-            // Получаем имя звонящего из базы
             String callerName = 'Семьянин';
             try {
               final callerProfile = await _supabase
@@ -88,6 +147,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   .single();
               callerName = callerProfile['display_name'] ?? 'Семьянин';
             } catch (_) {}
+
+            // Показываем уведомление о звонке
+            await NotificationService.showCallNotification(
+              callerName: callerName,
+            );
 
             if (!mounted) return;
             _showIncomingCall(callId, callerName, false);
@@ -115,11 +179,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
     });
   }
 
-  Future<void> _saveFcmToken() async {
-    await FcmService.saveTokenToDb(widget.currentUserId);
-    FcmService.listenTokenRefresh(widget.currentUserId);
-  }
-
   Future<void> _fetchProfiles() async {
     try {
       final response = await _supabase
@@ -127,6 +186,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
           .select()
           .neq('id', widget.currentUserId)
           .timeout(const Duration(seconds: 15));
+
+      // Кешируем имена
+      for (final p in response as List) {
+        final id = p['id']?.toString() ?? '';
+        final name = p['display_name']?.toString() ?? 'Семьянин';
+        if (id.isNotEmpty) _profileNames[id] = name;
+      }
+
       setState(() {
         _profiles = response;
         _isLoading = false;
@@ -178,6 +245,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   @override
   void dispose() {
     _incomingCallChannel?.unsubscribe();
+    _newMessagesChannel?.unsubscribe();
     super.dispose();
   }
 

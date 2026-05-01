@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
-import '../services/fcm_sender.dart';
+
 import 'call_screen.dart';
 import '../services/jitsi_service.dart';
 
@@ -9,7 +9,7 @@ class OutgoingCallScreen extends StatefulWidget {
   final String receiverId;
   final String receiverName;
   final String receiverAvatarUrl;
-  final String receiverFcmToken;
+
   final String callerId;
   final String callerName;
   final bool isVideoCall;
@@ -19,7 +19,6 @@ class OutgoingCallScreen extends StatefulWidget {
     required this.receiverId,
     required this.receiverName,
     required this.receiverAvatarUrl,
-    required this.receiverFcmToken,
     required this.callerId,
     required this.callerName,
     required this.isVideoCall,
@@ -57,15 +56,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
 
       _callId = response['id'];
 
-      // 2. Отправляем Push-уведомление через Firebase чтобы разбудить второй телефон
-      if (widget.receiverFcmToken.isNotEmpty) {
-        await FcmSender.sendCallNotification(
-          targetToken: widget.receiverFcmToken,
-          callerName: widget.callerName,
-          callId: _callId!,
-          isVideo: widget.isVideoCall,
-        );
-      }
+      // 2. Уведомление о звонке придёт через Supabase Realtime (не нужен Google/FCM)
 
       // 3. Начинаем слушать ответ через Realtime
       _callSubscription = _supabase
